@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple stone / pebble silhouette for the starter icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,28c-12,0 -22,8 -26,18c-2,5 -2,11 1,16c4,8 14,16 25,16c12,0 22,-7 26,-16c3,-5 3,-12 0,-17c-4,-11 -14,-17 -26,-17z" />
+    <path
+        android:fillColor="#E8EDE0"
+        android:pathData="M42,46c4,-6 12,-9 20,-8c-6,2 -11,6 -14,12c-2,4 -2,8 0,12c-4,-3 -7,-9 -6,-16z"
+        android:fillAlpha="0.55" />
+</vector>

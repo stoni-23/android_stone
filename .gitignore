@@ -1,0 +1,41 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+bin/
+gen/
+out/
+.navigation/
+captures/
+output.json
+*.log
+.kotlin/
+
+# Android Studio
+*.hprof
+*.pyc
+
+# NDK / native (not used, but ignore if added later)
+obj/
+
+# Signing
+*.jks
+*.keystore
+!debug.keystore
+
+# App module
+/app/build/
+/app/release/
+
+# Kotlin
+.kotlin/
