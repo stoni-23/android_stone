@@ -1,9 +1,9 @@
-# Android Stone
+# Limes
 
-Kotlin- und Jetpack-Compose-Prototyp: germanische Siedlung am Limes (Material 3).
+Kotlin- und Jetpack-Compose-Prototyp: *Siedeln. Plündern. Ruhm.* — germanische Siedlung am Limes (Material 3).
 
 **Application-ID:** `com.stoni.androidstone`  
-**Anzeigename:** Android Stone  
+**Anzeigename:** Limes  
 **Min SDK:** 26 · **Compile SDK:** 35 · **Target SDK:** 34
 
 ## Spielidee (Prototyp)
@@ -39,7 +39,7 @@ APK: `app/build/outputs/apk/debug/app-debug.apk`
 
 | Bereich | Inhalt |
 |--------|--------|
-| Startbildschirm | Titel, Limes-Thema, Button „Spielen“ |
+| Startbildschirm | Titel „Limes“, Untertitel, Button „Spielen“ |
 | Spielbildschirm | Ressourcenleiste, 5×5-Siedlung, Bau/Ausbau, Raubzug, Runde |
 | Spiel-Logik | `com.stoni.androidstone.game` |
 | Navigation | Compose Navigation Start ↔ Spiel |

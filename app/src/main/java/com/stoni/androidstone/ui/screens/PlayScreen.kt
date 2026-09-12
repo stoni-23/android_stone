@@ -81,7 +81,7 @@ fun PlayScreen(
         modifier = modifier.fillMaxSize(),
         topBar = {
             TopAppBar(
-                title = { Text("Limes-Siedlung") },
+                title = { Text("Limes") },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(
@@ -213,15 +213,15 @@ private fun ResourceBar(state: GameState) {
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        ResourceChip("Holz", r.holz)
-        ResourceChip("Getreide", r.getreide)
-        ResourceChip("Eisen", r.eisen)
-        ResourceChip("Ruhm", r.ruhm)
+        ResourceChip("Holz", r.holz, "Aus dem Forst")
+        ResourceChip("Getreide", r.getreide, "Vom Acker und der Jagd")
+        ResourceChip("Eisen", r.eisen, "Aus Erz und Beute")
+        ResourceChip("Ruhm", r.ruhm, "Was die Stämme von dir sagen")
     }
 }
 
 @Composable
-private fun ResourceChip(label: String, value: Int) {
+private fun ResourceChip(label: String, value: Int, shortText: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
@@ -234,6 +234,14 @@ private fun ResourceChip(label: String, value: Int) {
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        Text(
+            text = shortText,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+            fontSize = 8.sp,
+            textAlign = TextAlign.Center,
+            maxLines = 2
         )
     }
 }
@@ -483,12 +491,15 @@ private fun RaidDialog(
         text = {
             Column {
                 Text(
-                    "Stelle Krieger auf und greife den Wachturm an. " +
-                        "Kosten: $RAID_EISEN_COST Eisen. Beute: Getreide, Eisen, Ruhm."
+                    if (state.raidCooldown > 0) {
+                        "Die Römer sind gewarnt. Wartet."
+                    } else {
+                        "Die Nacht ist günstig. Kosten: $RAID_EISEN_COST Eisen."
+                    }
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 if (state.raidCooldown > 0) {
-                    Text("Abklingzeit: noch ${state.raidCooldown} Runde(n).")
+                    Text("Noch ${state.raidCooldown} Runde(n).")
                 } else {
                     Text("Krieger: $warriors")
                     Slider(

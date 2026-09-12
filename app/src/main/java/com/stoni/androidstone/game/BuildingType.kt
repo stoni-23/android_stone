@@ -13,31 +13,31 @@ enum class BuildingType(
     THINGHALLE(
         displayName = "Thinghalle",
         shortLabel = "TH",
-        description = "Versammlungshaus und festes Zentrum der Siedlung.",
+        description = "Hier spricht der Stamm.",
         buildable = false
     ),
     LANGHAUS(
         displayName = "Langhaus",
         shortLabel = "LH",
-        description = "Wohnraum – erhöht die Bevölkerung.",
+        description = "Wärme, Sippe, Arbeitskraft.",
         buildable = true
     ),
     HOLZFAELLER(
         displayName = "Holzfäller",
         shortLabel = "HF",
-        description = "Schlägt Holz für den Bau.",
+        description = "Äxte im Grenzforst.",
         buildable = true
     ),
     ACKER(
         displayName = "Acker",
         shortLabel = "AK",
-        description = "Anbau von Getreide. Bonus neben einem Langhaus.",
+        description = "Gerste für den Winter.",
         buildable = true
     ),
     SCHMIEDE(
         displayName = "Schmiede",
         shortLabel = "SM",
-        description = "Verarbeitet Eisen und stärkt den Schutz.",
+        description = "Klingen für den nächsten Zug.",
         buildable = true
     );
 

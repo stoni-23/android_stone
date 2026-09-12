@@ -72,7 +72,7 @@ data class GameState(
     val needs: Needs = Needs(),
     val round: Int = 1,
     val raidCooldown: Int = 0,
-    val statusMessage: String = "Willkommen an der Limes-Grenze. Baue deine Siedlung!"
+    val statusMessage: String = "Die Nacht ist günstig. Baue deine Siedlung!"
 ) {
     fun cellAt(index: Int): GridCell = cells[index]
 
@@ -261,9 +261,9 @@ fun GameState.raidWachturm(warriors: Int, random: Random = Random.Default): Pair
             warriors = 0,
             roll = 0,
             loot = ResourceDelta(),
-            message = "Noch $raidCooldown Runde(n) Abklingzeit bis zum nächsten Raubzug."
+            message = "Die Römer sind gewarnt. Wartet."
         )
-        return this to result
+        return copy(statusMessage = result.message) to result
     }
     if (bevoelkerung < RAID_MIN_WARRIORS) {
         val result = RaidResult(
@@ -304,16 +304,16 @@ fun GameState.raidWachturm(warriors: Int, random: Random = Random.Default): Pair
             ruhm = 2 + if (roll == 6) 2 else 0
         )
         newResources = newResources.apply(loot)
-        message = "Sieg am Wachturm! Wurf $roll + $used Krieger = $power. " +
-            "Beute: +${loot.getreide} Getreide, +${loot.eisen} Eisen, +${loot.ruhm} Ruhm."
+        message = "Der Turm brennt. Beute gehört euch. " +
+            "(+${loot.getreide} Getreide, +${loot.eisen} Eisen, +${loot.ruhm} Ruhm)"
     } else {
         loot = ResourceDelta()
         // Kleiner Verlust
         if (newPop > 1 && roll <= 2) {
             newPop -= 1
-            message = "Niederlage! Wurf $roll + $used = $power < $difficulty. Ein Krieger fällt."
+            message = "Die Wache war wach. Zieht euch zurück. Ein Krieger fällt."
         } else {
-            message = "Abgewehrt! Wurf $roll + $used = $power < $difficulty. Keine Beute."
+            message = "Die Wache war wach. Zieht euch zurück."
         }
     }
 
