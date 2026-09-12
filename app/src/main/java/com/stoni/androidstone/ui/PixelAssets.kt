@@ -17,7 +17,8 @@ import com.stoni.androidstone.R
 import com.stoni.androidstone.game.BuildingType
 
 /**
- * Looki Luke Priority-1 drawable ids. Returns null when a name is missing
+ * Looki Luke drawable ids (P1 buildings/icons + P2 FX/units/path).
+ * Returns null via [rememberDrawableOrNull] when a name is missing
  * so callers can keep the colored/text fallback UI.
  */
 object PixelAssets {
@@ -38,12 +39,30 @@ object PixelAssets {
         }
     }
 
+    /** Productive buildings that can show an idle worker sprite. */
+    fun isProductive(type: BuildingType): Boolean = when (type) {
+        BuildingType.HOLZFAELLER, BuildingType.ACKER, BuildingType.SCHMIEDE -> true
+        else -> false
+    }
+
     @DrawableRes val grass: Int = R.drawable.tile_grass
+    @DrawableRes val path: Int = R.drawable.tile_path
     @DrawableRes val iconHolz: Int = R.drawable.icon_holz
     @DrawableRes val iconGetreide: Int = R.drawable.icon_getreide
     @DrawableRes val iconEisen: Int = R.drawable.icon_eisen
     @DrawableRes val iconRuhm: Int = R.drawable.icon_ruhm
     @DrawableRes val wachturm: Int = R.drawable.wachturm
+
+    @DrawableRes val fxSmoke1: Int = R.drawable.fx_smoke_1
+    @DrawableRes val fxSmoke2: Int = R.drawable.fx_smoke_2
+    @DrawableRes val fxFire1: Int = R.drawable.fx_fire_1
+    @DrawableRes val fxFire2: Int = R.drawable.fx_fire_2
+    @DrawableRes val fxHit: Int = R.drawable.fx_hit
+
+    @DrawableRes val workerA: Int = R.drawable.worker_a
+    @DrawableRes val workerB: Int = R.drawable.worker_b
+    @DrawableRes val warriorA: Int = R.drawable.warrior_a
+    @DrawableRes val warriorB: Int = R.drawable.warrior_b
 }
 
 /** Runtime check so a missing id does not crash the UI. */

@@ -1,6 +1,12 @@
 package com.stoni.androidstone.ui.screens
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,9 +58,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.stoni.androidstone.ui.PixelAssets
-import com.stoni.androidstone.ui.pixelPainterResource
-import com.stoni.androidstone.ui.rememberDrawableOrNull
 import com.stoni.androidstone.game.BuildCost
 import com.stoni.androidstone.game.BuildingType
 import com.stoni.androidstone.game.CENTER_INDEX
@@ -62,16 +66,47 @@ import com.stoni.androidstone.game.GameState
 import com.stoni.androidstone.game.MAX_BUILDING_LEVEL
 import com.stoni.androidstone.game.RAID_EISEN_COST
 import com.stoni.androidstone.game.RAID_MIN_WARRIORS
+import com.stoni.androidstone.game.RaidResult
 import com.stoni.androidstone.game.advanceRound
 import com.stoni.androidstone.game.build
 import com.stoni.androidstone.game.costForLevel
 import com.stoni.androidstone.game.raidWachturm
 import com.stoni.androidstone.game.upgrade
+import com.stoni.androidstone.ui.PixelAssets
+import com.stoni.androidstone.ui.pixelPainterResource
+import com.stoni.androidstone.ui.rememberDrawableOrNull
 import com.stoni.androidstone.ui.theme.AndroidStoneTheme
+import kotlinx.coroutines.delay
+import kotlin.math.abs
 
 private sealed class CellDialog {
     data class Build(val index: Int) : CellDialog()
     data class Info(val index: Int) : CellDialog()
+}
+
+/** Orthogonal neighbors of the Thinghalle get a path ground tile. */
+private fun isAdjacentToThinghalle(index: Int): Boolean {
+    val crow = CENTER_INDEX / GRID_SIZE
+    val ccol = CENTER_INDEX % GRID_SIZE
+    val row = index / GRID_SIZE
+    val col = index % GRID_SIZE
+    return abs(row - crow) + abs(col - ccol) == 1
+}
+
+/** Two-frame pixel flip (~400ms). Frame 0 or 1. */
+@Composable
+private fun rememberPixelFrame(periodMs: Int = 400): Int {
+    val transition = rememberInfiniteTransition(label = "pixelFrame")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = periodMs * 2, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pixelPhase"
+    )
+    return if (phase < 1f) 0 else 1
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,6 +119,7 @@ fun PlayScreen(
     var cellDialog by remember { mutableStateOf<CellDialog?>(null) }
     var showRaidPanel by remember { mutableStateOf(false) }
     var warriorCount by remember { mutableIntStateOf(3) }
+    val unitFrame = rememberPixelFrame(400)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -122,6 +158,7 @@ fun PlayScreen(
 
             SettlementGrid(
                 state = state,
+                unitFrame = unitFrame,
                 onCellClick = { index ->
                     val cell = state.cellAt(index)
                     cellDialog = if (cell.isEmpty) {
@@ -143,7 +180,8 @@ fun PlayScreen(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Button(
                     onClick = { state = state.advanceRound() },
@@ -161,13 +199,27 @@ fun PlayScreen(
                     },
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        if (state.raidCooldown > 0) {
-                            "Raubzug (${state.raidCooldown})"
-                        } else {
-                            "Raubzug"
-                        }
+                    val warriorId = rememberDrawableOrNull(
+                        if (unitFrame == 0) PixelAssets.warriorA else PixelAssets.warriorB
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (warriorId != null) {
+                            Image(
+                                painter = pixelPainterResource(warriorId),
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Text(
+                            if (state.raidCooldown > 0) {
+                                "Raubzug (${state.raidCooldown})"
+                            } else {
+                                "Raubzug"
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -201,10 +253,10 @@ fun PlayScreen(
             warriors = warriorCount,
             onWarriorsChange = { warriorCount = it },
             onDismiss = { showRaidPanel = false },
-            onRaid = {
-                val (next, _) = state.raidWachturm(warriorCount)
+            onRaid = { count ->
+                val (next, result) = state.raidWachturm(count)
                 state = next
-                showRaidPanel = false
+                result
             }
         )
     }
@@ -312,6 +364,7 @@ private fun NeedRow(label: String, value: Int) {
 @Composable
 private fun SettlementGrid(
     state: GameState,
+    unitFrame: Int,
     onCellClick: (Int) -> Unit
 ) {
     Column(
@@ -332,6 +385,7 @@ private fun SettlementGrid(
                     GridCellView(
                         state = state,
                         index = index,
+                        unitFrame = unitFrame,
                         onClick = { onCellClick(index) },
                         modifier = Modifier.weight(1f)
                     )
@@ -345,16 +399,26 @@ private fun SettlementGrid(
 private fun GridCellView(
     state: GameState,
     index: Int,
+    unitFrame: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val cell = state.cellAt(index)
     val building = cell.building
-    val grassId = rememberDrawableOrNull(PixelAssets.grass)
+    val usePath = isAdjacentToThinghalle(index)
+    val groundId = rememberDrawableOrNull(
+        if (usePath) PixelAssets.path else PixelAssets.grass
+    )
+    // Fall back to grass if path asset somehow missing
+    val grassFallback = rememberDrawableOrNull(PixelAssets.grass)
+    val ground = groundId ?: grassFallback
     val mappedSprite = building?.let { PixelAssets.building(it.type, it.level) } ?: 0
     val spriteId = rememberDrawableOrNull(mappedSprite)
+    val workerId = rememberDrawableOrNull(
+        if (unitFrame == 0) PixelAssets.workerA else PixelAssets.workerB
+    )
     val bg = when {
-        grassId != null -> Color.Transparent
+        ground != null -> Color.Transparent
         building?.type == BuildingType.THINGHALLE -> MaterialTheme.colorScheme.primary
         building != null -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f)
         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -372,16 +436,16 @@ private fun GridCellView(
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (grassId != null) {
+        if (ground != null) {
             Image(
-                painter = pixelPainterResource(grassId),
+                painter = pixelPainterResource(ground),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.FillBounds
             )
         }
         if (building == null) {
-            if (grassId == null) {
+            if (ground == null) {
                 Text(
                     text = "+",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -404,6 +468,17 @@ private fun GridCellView(
                     .padding(1.dp),
                 contentScale = ContentScale.Fit
             )
+            if (PixelAssets.isProductive(building.type) && workerId != null) {
+                Image(
+                    painter = pixelPainterResource(workerId),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 1.dp, bottom = 10.dp)
+                        .size(14.dp),
+                    contentScale = ContentScale.Fit
+                )
+            }
             Text(
                 text = "S${building.level}",
                 color = Color(0xFFF2E6D0),
@@ -541,64 +616,139 @@ private fun RaidDialog(
     warriors: Int,
     onWarriorsChange: (Int) -> Unit,
     onDismiss: () -> Unit,
-    onRaid: () -> Unit
+    onRaid: (Int) -> RaidResult
 ) {
     val maxWarriors = state.bevoelkerung.coerceAtMost(8).coerceAtLeast(RAID_MIN_WARRIORS)
     val canRaid = state.raidCooldown == 0 &&
         state.bevoelkerung >= RAID_MIN_WARRIORS &&
         state.resources.eisen >= RAID_EISEN_COST
 
+    var lastResult by remember { mutableStateOf<RaidResult?>(null) }
+    var showFx by remember { mutableStateOf(false) }
+    val smokeFrame = rememberPixelFrame(500)
+    val fireFrame = rememberPixelFrame(280)
+    val wachturmId = rememberDrawableOrNull(PixelAssets.wachturm)
+    val smokeId = rememberDrawableOrNull(
+        if (smokeFrame == 0) PixelAssets.fxSmoke1 else PixelAssets.fxSmoke2
+    )
+    val fireId = rememberDrawableOrNull(
+        if (fireFrame == 0) PixelAssets.fxFire1 else PixelAssets.fxFire2
+    )
+    val hitId = rememberDrawableOrNull(PixelAssets.fxHit)
+
+    LaunchedEffect(showFx, lastResult) {
+        if (showFx && lastResult != null) {
+            delay(900)
+            onDismiss()
+        }
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!showFx) onDismiss()
+        },
         title = { Text("Römischer Wachturm") },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                val wachturmId = rememberDrawableOrNull(PixelAssets.wachturm)
-                if (wachturmId != null) {
-                    Image(
-                        painter = pixelPainterResource(wachturmId),
-                        contentDescription = "Römischer Wachturm",
-                        modifier = Modifier.size(64.dp),
-                        contentScale = ContentScale.Fit
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                Text(
-                    if (state.raidCooldown > 0) {
-                        "Die Römer sind gewarnt. Wartet."
-                    } else {
-                        "Die Nacht ist günstig. Kosten: $RAID_EISEN_COST Eisen."
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.size(80.dp)
+                ) {
+                    if (wachturmId != null) {
+                        Image(
+                            painter = pixelPainterResource(wachturmId),
+                            contentDescription = "Römischer Wachturm",
+                            modifier = Modifier.size(64.dp),
+                            contentScale = ContentScale.Fit
+                        )
                     }
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                if (state.raidCooldown > 0) {
-                    Text("Noch ${state.raidCooldown} Runde(n).")
-                } else {
-                    Text("Krieger: $warriors")
-                    Slider(
-                        value = warriors.toFloat().coerceIn(
-                            RAID_MIN_WARRIORS.toFloat(),
-                            maxWarriors.toFloat()
-                        ),
-                        onValueChange = { onWarriorsChange(it.toInt()) },
-                        valueRange = RAID_MIN_WARRIORS.toFloat()..maxWarriors.toFloat(),
-                        steps = (maxWarriors - RAID_MIN_WARRIORS - 1).coerceAtLeast(0)
-                    )
+                    if (!showFx) {
+                        if (smokeId != null) {
+                            Image(
+                                painter = pixelPainterResource(smokeId),
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .size(28.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    } else if (lastResult?.success == true) {
+                        val fxId = fireId ?: hitId
+                        if (fxId != null) {
+                            Image(
+                                painter = pixelPainterResource(fxId),
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    } else if (lastResult != null) {
+                        if (hitId != null) {
+                            Image(
+                                painter = pixelPainterResource(hitId),
+                                contentDescription = null,
+                                modifier = Modifier.size(40.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                if (showFx && lastResult != null) {
                     Text(
-                        text = "Siegchance steigt mit mehr Kriegern (Würfel + Krieger ≥ 8).",
+                        text = lastResult!!.message,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        textAlign = TextAlign.Center
                     )
+                } else {
+                    Text(
+                        if (state.raidCooldown > 0) {
+                            "Die Römer sind gewarnt. Wartet."
+                        } else {
+                            "Die Nacht ist günstig. Kosten: $RAID_EISEN_COST Eisen."
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (state.raidCooldown > 0) {
+                        Text("Noch ${state.raidCooldown} Runde(n).")
+                    } else {
+                        Text("Krieger: $warriors")
+                        Slider(
+                            value = warriors.toFloat().coerceIn(
+                                RAID_MIN_WARRIORS.toFloat(),
+                                maxWarriors.toFloat()
+                            ),
+                            onValueChange = { onWarriorsChange(it.toInt()) },
+                            valueRange = RAID_MIN_WARRIORS.toFloat()..maxWarriors.toFloat(),
+                            steps = (maxWarriors - RAID_MIN_WARRIORS - 1).coerceAtLeast(0)
+                        )
+                        Text(
+                            text = "Siegchance steigt mit mehr Kriegern (Würfel + Krieger ≥ 8).",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onRaid, enabled = canRaid) {
-                Text("Angreifen")
+            if (!showFx) {
+                Button(
+                    onClick = {
+                        lastResult = onRaid(warriors)
+                        showFx = true
+                    },
+                    enabled = canRaid
+                ) {
+                    Text("Angreifen")
+                }
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Abbrechen") }
+            if (!showFx) {
+                TextButton(onClick = onDismiss) { Text("Abbrechen") }
+            }
         }
     )
 }
