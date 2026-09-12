@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.stoni.androidstone"
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.stoni.androidstone"
