@@ -17,9 +17,7 @@ import com.stoni.androidstone.R
 import com.stoni.androidstone.game.BuildingType
 
 /**
- * Looki Luke drawable ids (P1 buildings/icons + P2 FX/units/path).
- * Returns null via [rememberDrawableOrNull] when a name is missing
- * so callers can keep the colored/text fallback UI.
+ * Looki Luke game-size ids: buildings/tiles *_256, icons/units/FX *_128.
  */
 object PixelAssets {
     @DrawableRes
@@ -27,45 +25,45 @@ object PixelAssets {
         val stage2 = level >= 2
         return when (type) {
             BuildingType.THINGHALLE ->
-                if (stage2) R.drawable.thinghalle_2 else R.drawable.thinghalle_1
+                if (stage2) R.drawable.thinghalle_2_256 else R.drawable.thinghalle_1_256
             BuildingType.LANGHAUS ->
-                if (stage2) R.drawable.langhaus_2 else R.drawable.langhaus_1
+                if (stage2) R.drawable.langhaus_2_256 else R.drawable.langhaus_1_256
             BuildingType.HOLZFAELLER ->
-                if (stage2) R.drawable.holzfaeller_2 else R.drawable.holzfaeller_1
+                if (stage2) R.drawable.holzfaeller_2_256 else R.drawable.holzfaeller_1_256
             BuildingType.ACKER ->
-                if (stage2) R.drawable.acker_2 else R.drawable.acker_1
+                if (stage2) R.drawable.acker_2_256 else R.drawable.acker_1_256
             BuildingType.SCHMIEDE ->
-                if (stage2) R.drawable.schmiede_2 else R.drawable.schmiede_1
+                if (stage2) R.drawable.schmiede_2_256 else R.drawable.schmiede_1_256
         }
     }
 
-    /** Productive buildings that can show an idle worker sprite. */
     fun isProductive(type: BuildingType): Boolean = when (type) {
         BuildingType.HOLZFAELLER, BuildingType.ACKER, BuildingType.SCHMIEDE -> true
         else -> false
     }
 
-    @DrawableRes val grass: Int = R.drawable.tile_grass
-    @DrawableRes val path: Int = R.drawable.tile_path
-    @DrawableRes val iconHolz: Int = R.drawable.icon_holz
-    @DrawableRes val iconGetreide: Int = R.drawable.icon_getreide
-    @DrawableRes val iconEisen: Int = R.drawable.icon_eisen
-    @DrawableRes val iconRuhm: Int = R.drawable.icon_ruhm
-    @DrawableRes val wachturm: Int = R.drawable.wachturm
+    @DrawableRes val grass: Int = R.drawable.tile_grass_256
+    @DrawableRes val path: Int = R.drawable.tile_path_256
+    @DrawableRes val buildSlot: Int = R.drawable.tile_build_slot_256
 
-    @DrawableRes val fxSmoke1: Int = R.drawable.fx_smoke_1
-    @DrawableRes val fxSmoke2: Int = R.drawable.fx_smoke_2
-    @DrawableRes val fxFire1: Int = R.drawable.fx_fire_1
-    @DrawableRes val fxFire2: Int = R.drawable.fx_fire_2
-    @DrawableRes val fxHit: Int = R.drawable.fx_hit
+    @DrawableRes val iconHolz: Int = R.drawable.icon_holz_128
+    @DrawableRes val iconGetreide: Int = R.drawable.icon_getreide_128
+    @DrawableRes val iconEisen: Int = R.drawable.icon_eisen_128
+    @DrawableRes val iconRuhm: Int = R.drawable.icon_ruhm_128
+    @DrawableRes val wachturm: Int = R.drawable.wachturm_256
 
-    @DrawableRes val workerA: Int = R.drawable.worker_a
-    @DrawableRes val workerB: Int = R.drawable.worker_b
-    @DrawableRes val warriorA: Int = R.drawable.warrior_a
-    @DrawableRes val warriorB: Int = R.drawable.warrior_b
+    @DrawableRes val fxSmoke1: Int = R.drawable.fx_smoke_1_128
+    @DrawableRes val fxSmoke2: Int = R.drawable.fx_smoke_2_128
+    @DrawableRes val fxFire1: Int = R.drawable.fx_fire_1_128
+    @DrawableRes val fxFire2: Int = R.drawable.fx_fire_2_128
+    @DrawableRes val fxHit: Int = R.drawable.fx_hit_128
+
+    @DrawableRes val workerA: Int = R.drawable.worker_a_128
+    @DrawableRes val workerB: Int = R.drawable.worker_b_128
+    @DrawableRes val warriorA: Int = R.drawable.warrior_a_128
+    @DrawableRes val warriorB: Int = R.drawable.warrior_b_128
 }
 
-/** Runtime check so a missing id does not crash the UI. */
 @Composable
 fun rememberDrawableOrNull(@DrawableRes id: Int): Int? {
     val resources = LocalContext.current.resources
@@ -80,10 +78,6 @@ fun rememberDrawableOrNull(@DrawableRes id: Int): Int? {
     }
 }
 
-/**
- * Nearest-neighbor painter for pixel art (FilterQuality.None).
- * Same role as painterResource, but keeps 128px sprites crisp in the grid.
- */
 @Composable
 fun pixelPainterResource(@DrawableRes id: Int): Painter {
     val image = ImageBitmap.imageResource(id)

@@ -13,10 +13,12 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,7 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -40,7 +42,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -78,6 +80,14 @@ import com.stoni.androidstone.ui.rememberDrawableOrNull
 import com.stoni.androidstone.ui.theme.AndroidStoneTheme
 import kotlinx.coroutines.delay
 import kotlin.math.abs
+import kotlin.math.min
+
+private val BoardWood = Color(0xFF3E2C1C)
+private val HudPanel = Color(0xFF2A2118)
+private val HudPanelEdge = Color(0xFF6B5338)
+private val HudGold = Color(0xFFF2E6D0)
+private val HudMuted = Color(0xFFC4B59A)
+private val BuildModeGlow = Color(0xFFFFD76A)
 
 private sealed class CellDialog {
     data class Build(val index: Int) : CellDialog()
@@ -93,7 +103,6 @@ private fun isAdjacentToThinghalle(index: Int): Boolean {
     return abs(row - crow) + abs(col - ccol) == 1
 }
 
-/** Two-frame pixel flip (~400ms). Frame 0 or 1. */
 @Composable
 private fun rememberPixelFrame(periodMs: Int = 400): Int {
     val transition = rememberInfiniteTransition(label = "pixelFrame")
@@ -109,7 +118,6 @@ private fun rememberPixelFrame(periodMs: Int = 400): Int {
     return if (phase < 1f) 0 else 1
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlayScreen(
     onBackClick: () -> Unit,
@@ -118,110 +126,62 @@ fun PlayScreen(
     var state by remember { mutableStateOf(GameState()) }
     var cellDialog by remember { mutableStateOf<CellDialog?>(null) }
     var showRaidPanel by remember { mutableStateOf(false) }
+    var buildMode by remember { mutableStateOf(false) }
     var warriorCount by remember { mutableIntStateOf(3) }
     val unitFrame = rememberPixelFrame(400)
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = { Text("Limes") },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Zurück"
-                        )
-                    }
-                }
-            )
-        }
+        containerColor = Color(0xFF1A140F)
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
-            ResourceBar(state)
-            Spacer(modifier = Modifier.height(8.dp))
-            NeedsBar(state)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Runde ${state.round} · Bevölkerung ${state.bevoelkerung} · " +
-                    "Arbeitskraft ${(state.needs.arbeitkraft * 100).toInt()}%",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+            GameTopChrome(
+                round = state.round,
+                bevoelkerung = state.bevoelkerung,
+                onBackClick = onBackClick
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            ResourceHud(state)
+            NeedsHud(state)
+            Spacer(modifier = Modifier.height(6.dp))
 
-            SettlementGrid(
+            SettlementBoard(
                 state = state,
                 unitFrame = unitFrame,
+                buildMode = buildMode,
                 onCellClick = { index ->
                     val cell = state.cellAt(index)
-                    cellDialog = if (cell.isEmpty) {
-                        CellDialog.Build(index)
+                    if (cell.isEmpty) {
+                        cellDialog = CellDialog.Build(index)
+                        buildMode = false
                     } else {
-                        CellDialog.Info(index)
+                        cellDialog = CellDialog.Info(index)
                     }
-                }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = state.statusMessage,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Button(
-                    onClick = { state = state.advanceRound() },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Runde")
-                }
-                OutlinedButton(
-                    onClick = {
-                        warriorCount = warriorCount.coerceIn(
-                            RAID_MIN_WARRIORS,
-                            state.bevoelkerung.coerceAtLeast(RAID_MIN_WARRIORS).coerceAtMost(8)
-                        )
-                        showRaidPanel = true
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    val warriorId = rememberDrawableOrNull(
-                        if (unitFrame == 0) PixelAssets.warriorA else PixelAssets.warriorB
+            StatusStrip(state.statusMessage)
+            ActionBar(
+                state = state,
+                unitFrame = unitFrame,
+                buildMode = buildMode,
+                onRound = { state = state.advanceRound() },
+                onBuildToggle = { buildMode = !buildMode },
+                onRaid = {
+                    warriorCount = warriorCount.coerceIn(
+                        RAID_MIN_WARRIORS,
+                        state.bevoelkerung.coerceAtLeast(RAID_MIN_WARRIORS).coerceAtMost(8)
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (warriorId != null) {
-                            Image(
-                                painter = pixelPainterResource(warriorId),
-                                contentDescription = null,
-                                modifier = Modifier.size(20.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
-                        Text(
-                            if (state.raidCooldown > 0) {
-                                "Raubzug (${state.raidCooldown})"
-                            } else {
-                                "Raubzug"
-                            }
-                        )
-                    }
+                    showRaidPanel = true
                 }
-            }
+            )
         }
     }
 
@@ -263,132 +223,193 @@ fun PlayScreen(
 }
 
 @Composable
-private fun ResourceBar(state: GameState) {
+private fun GameTopChrome(
+    round: Int,
+    bevoelkerung: Int,
+    onBackClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(HudPanel)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(onClick = onBackClick) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = "Zurück",
+                tint = HudGold
+            )
+        }
+        Text(
+            text = "Limes",
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.Bold,
+            color = HudGold,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "Runde $round",
+            color = HudMuted,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(end = 10.dp)
+        )
+        Text(
+            text = "Volk $bevoelkerung",
+            color = HudGold,
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(end = 12.dp)
+        )
+    }
+}
+
+@Composable
+private fun ResourceHud(state: GameState) {
     val r = state.resources
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer)
+            .background(HudPanel.copy(alpha = 0.92f))
+            .border(1.dp, HudPanelEdge)
             .padding(horizontal = 10.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        ResourceChip("Holz", r.holz, "Aus dem Forst", PixelAssets.iconHolz)
-        ResourceChip("Getreide", r.getreide, "Vom Acker und der Jagd", PixelAssets.iconGetreide)
-        ResourceChip("Eisen", r.eisen, "Aus Erz und Beute", PixelAssets.iconEisen)
-        ResourceChip("Ruhm", r.ruhm, "Was die Stämme von dir sagen", PixelAssets.iconRuhm)
+        ResourceHudChip("Holz", r.holz, PixelAssets.iconHolz)
+        ResourceHudChip("Getreide", r.getreide, PixelAssets.iconGetreide)
+        ResourceHudChip("Eisen", r.eisen, PixelAssets.iconEisen)
+        ResourceHudChip("Ruhm", r.ruhm, PixelAssets.iconRuhm)
     }
 }
 
 @Composable
-private fun ResourceChip(
+private fun ResourceHudChip(
     label: String,
     value: Int,
-    shortText: String,
     @DrawableRes iconId: Int
 ) {
     val icon = rememberDrawableOrNull(iconId)
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontSize = 11.sp
-        )
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (icon != null) {
-                Image(
-                    painter = pixelPainterResource(icon),
-                    contentDescription = label,
-                    modifier = Modifier.size(16.dp),
-                    contentScale = ContentScale.Fit
-                )
-                Spacer(modifier = Modifier.width(3.dp))
-            }
-            Text(
-                text = value.toString(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-        }
-        Text(
-            text = shortText,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-            fontSize = 8.sp,
-            textAlign = TextAlign.Center,
-            maxLines = 2
-        )
-    }
-}
-
-@Composable
-private fun NeedsBar(state: GameState) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        NeedRow("Sättigung", state.needs.saettigung)
-        Spacer(modifier = Modifier.height(4.dp))
-        NeedRow("Schutz", state.needs.schutz)
-    }
-}
-
-@Composable
-private fun NeedRow(label: String, value: Int) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Text(
-            text = label,
-            modifier = Modifier.width(88.dp),
-            style = MaterialTheme.typography.bodyMedium
+        if (icon != null) {
+            Image(
+                painter = pixelPainterResource(icon),
+                contentDescription = label,
+                modifier = Modifier.size(28.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
+        Column {
+            Text(
+                text = value.toString(),
+                color = HudGold,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+            Text(
+                text = label,
+                color = HudMuted,
+                fontSize = 10.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun NeedsHud(state: GameState) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        NeedChip(
+            label = "Sättigung",
+            value = state.needs.saettigung,
+            modifier = Modifier.weight(1f)
         )
+        NeedChip(
+            label = "Schutz",
+            value = state.needs.schutz,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = "AK ${(state.needs.arbeitkraft * 100).toInt()}%",
+            color = HudMuted,
+            fontSize = 11.sp
+        )
+    }
+}
+
+@Composable
+private fun NeedChip(label: String, value: Int, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(label, color = HudMuted, fontSize = 10.sp)
+            Text("$value%", color = HudGold, fontSize = 10.sp)
+        }
         LinearProgressIndicator(
             progress = { value / 100f },
             modifier = Modifier
-                .weight(1f)
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp))
-        )
-        Text(
-            text = "$value%",
-            modifier = Modifier
-                .width(44.dp)
-                .padding(start = 8.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.End
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp)),
+            color = Color(0xFF8FBF5A),
+            trackColor = Color(0xFF3A3024)
         )
     }
 }
 
 @Composable
-private fun SettlementGrid(
+private fun SettlementBoard(
     state: GameState,
     unitFrame: Int,
-    onCellClick: (Int) -> Unit
+    buildMode: Boolean,
+    onCellClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-            .padding(6.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+    BoxWithConstraints(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
     ) {
-        for (row in 0 until GRID_SIZE) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                for (col in 0 until GRID_SIZE) {
-                    val index = row * GRID_SIZE + col
-                    GridCellView(
-                        state = state,
-                        index = index,
-                        unitFrame = unitFrame,
-                        onClick = { onCellClick(index) },
-                        modifier = Modifier.weight(1f)
-                    )
+        val boardSize = min(maxWidth.value, maxHeight.value).dp
+        Column(
+            modifier = Modifier
+                .size(boardSize)
+                .clip(RoundedCornerShape(10.dp))
+                .border(3.dp, BoardWood, RoundedCornerShape(10.dp))
+                .background(BoardWood)
+                .padding(3.dp),
+            verticalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            for (row in 0 until GRID_SIZE) {
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    for (col in 0 until GRID_SIZE) {
+                        val index = row * GRID_SIZE + col
+                        GridCellView(
+                            state = state,
+                            index = index,
+                            unitFrame = unitFrame,
+                            buildMode = buildMode,
+                            onClick = { onCellClick(index) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                        )
+                    }
                 }
             }
         }
@@ -400,107 +421,170 @@ private fun GridCellView(
     state: GameState,
     index: Int,
     unitFrame: Int,
+    buildMode: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val cell = state.cellAt(index)
     val building = cell.building
     val usePath = isAdjacentToThinghalle(index)
-    val groundId = rememberDrawableOrNull(
-        if (usePath) PixelAssets.path else PixelAssets.grass
-    )
-    // Fall back to grass if path asset somehow missing
+    // Empty buildable cells always use Looki build-slot (never a plus).
+    // Occupied cells sit on grass, or path when next to the Thinghalle.
+    val groundRes = when {
+        building == null -> PixelAssets.buildSlot
+        usePath -> PixelAssets.path
+        else -> PixelAssets.grass
+    }
+    val groundPrimary = rememberDrawableOrNull(groundRes)
     val grassFallback = rememberDrawableOrNull(PixelAssets.grass)
-    val ground = groundId ?: grassFallback
+    val resolvedGround = groundPrimary ?: grassFallback
+
     val mappedSprite = building?.let { PixelAssets.building(it.type, it.level) } ?: 0
     val spriteId = rememberDrawableOrNull(mappedSprite)
     val workerId = rememberDrawableOrNull(
         if (unitFrame == 0) PixelAssets.workerA else PixelAssets.workerB
     )
-    val bg = when {
-        ground != null -> Color.Transparent
-        building?.type == BuildingType.THINGHALLE -> MaterialTheme.colorScheme.primary
-        building != null -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f)
-        else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-    }
-    val fg = when {
-        building?.type == BuildingType.THINGHALLE -> MaterialTheme.colorScheme.onPrimary
-        else -> MaterialTheme.colorScheme.onSurface
-    }
 
     Box(
         modifier = modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(6.dp))
-            .background(bg)
+            .then(
+                if (buildMode && building == null) Modifier.border(2.dp, BuildModeGlow)
+                else Modifier
+            )
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        if (ground != null) {
+        if (resolvedGround != null) {
             Image(
-                painter = pixelPainterResource(ground),
+                painter = pixelPainterResource(resolvedGround),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.FillBounds
             )
         }
-        if (building == null) {
-            if (ground == null) {
+        if (building != null) {
+            if (spriteId != null) {
+                Image(
+                    painter = pixelPainterResource(spriteId),
+                    contentDescription = building.type.displayName,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(2.dp),
+                    contentScale = ContentScale.Fit
+                )
+                if (PixelAssets.isProductive(building.type) && workerId != null) {
+                    Image(
+                        painter = pixelPainterResource(workerId),
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(start = 2.dp, bottom = 14.dp)
+                            .fillMaxWidth(0.38f)
+                            .aspectRatio(1f),
+                        contentScale = ContentScale.Fit
+                    )
+                }
                 Text(
-                    text = "+",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 18.sp
+                    text = "S${building.level}",
+                    color = HudGold,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 2.dp)
+                        .background(Color(0xAA1A140F), RoundedCornerShape(3.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
                 )
             } else {
                 Text(
-                    text = "+",
-                    color = Color.White.copy(alpha = 0.55f),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-        } else if (spriteId != null) {
-            Image(
-                painter = pixelPainterResource(spriteId),
-                contentDescription = building.type.displayName,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(1.dp),
-                contentScale = ContentScale.Fit
-            )
-            if (PixelAssets.isProductive(building.type) && workerId != null) {
-                Image(
-                    painter = pixelPainterResource(workerId),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = 1.dp, bottom = 10.dp)
-                        .size(14.dp),
-                    contentScale = ContentScale.Fit
-                )
-            }
-            Text(
-                text = "S${building.level}",
-                color = Color(0xFFF2E6D0),
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 1.dp)
-            )
-        } else {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
                     text = building.type.shortLabel,
-                    color = fg,
+                    color = HudGold,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center
+                    fontSize = 14.sp
                 )
+            }
+        }
+        // No plus signs — empty cells are tile_build_slot / path only.
+    }
+}
+
+@Composable
+private fun StatusStrip(message: String) {
+    Text(
+        text = message,
+        color = HudGold,
+        fontSize = 12.sp,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    )
+}
+
+@Composable
+private fun ActionBar(
+    state: GameState,
+    unitFrame: Int,
+    buildMode: Boolean,
+    onRound: () -> Unit,
+    onBuildToggle: () -> Unit,
+    onRaid: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(HudPanel)
+            .border(1.dp, HudPanelEdge)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Button(
+            onClick = onRound,
+            modifier = Modifier.weight(1.1f),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFF5D6B3A),
+                contentColor = Color.White
+            )
+        ) {
+            Text("Runde", fontWeight = FontWeight.Bold)
+        }
+        Button(
+            onClick = onBuildToggle,
+            modifier = Modifier.weight(1.1f),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (buildMode) Color(0xFFB8892E) else Color(0xFF8B6B4A),
+                contentColor = Color.White
+            )
+        ) {
+            Text(if (buildMode) "Bauen…" else "Bauen", fontWeight = FontWeight.Bold)
+        }
+        OutlinedButton(
+            onClick = onRaid,
+            modifier = Modifier.weight(1f)
+        ) {
+            val warriorId = rememberDrawableOrNull(
+                if (unitFrame == 0) PixelAssets.warriorA else PixelAssets.warriorB
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (warriorId != null) {
+                    Image(
+                        painter = pixelPainterResource(warriorId),
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
                 Text(
-                    text = "S${building.level}",
-                    color = fg.copy(alpha = 0.85f),
-                    fontSize = 10.sp
+                    text = if (state.raidCooldown > 0) {
+                        "Raid (${state.raidCooldown})"
+                    } else {
+                        "Raid"
+                    },
+                    color = HudGold,
+                    fontSize = 13.sp
                 )
             }
         }
@@ -518,14 +602,18 @@ private fun BuildMenuDialog(
         onDismissRequest = onDismiss,
         title = { Text("Gebäude errichten") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
                 Text(
-                    text = "Feld ${index + 1} – wähle ein Gebäude (Stufe 1):",
+                    text = "Feld ${index + 1} – wähle ein Gebäude:",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 BuildingType.buildableTypes.forEach { type ->
                     val cost = type.costForLevel(1)
                     val affordable = state.resources.canAfford(cost)
+                    val sprite = rememberDrawableOrNull(PixelAssets.building(type, 1))
                     val costText = buildString {
                         if (cost.holz > 0) append("${cost.holz} Holz ")
                         if (cost.getreide > 0) append("${cost.getreide} Getreide ")
@@ -536,13 +624,27 @@ private fun BuildMenuDialog(
                         enabled = affordable,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text(type.displayName, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                text = "$costText · ${type.description}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontSize = 12.sp
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (sprite != null) {
+                                Image(
+                                    painter = pixelPainterResource(sprite),
+                                    contentDescription = type.displayName,
+                                    modifier = Modifier.size(48.dp),
+                                    contentScale = ContentScale.Fit
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(type.displayName, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    text = "$costText · ${type.description}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
                     }
                 }
@@ -569,12 +671,22 @@ private fun BuildingInfoDialog(
         building.type.costForLevel(building.level + 1)
     }
     val affordable = state.resources.canAfford(upgradeCost)
+    val sprite = rememberDrawableOrNull(PixelAssets.building(building.type, building.level))
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(building.type.displayName) },
         text = {
-            Column {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (sprite != null) {
+                    Image(
+                        painter = pixelPainterResource(sprite),
+                        contentDescription = building.type.displayName,
+                        modifier = Modifier.size(96.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 Text("Stufe ${building.level} / $MAX_BUILDING_LEVEL")
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(building.type.description)
@@ -652,13 +764,13 @@ private fun RaidDialog(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(80.dp)
+                    modifier = Modifier.size(140.dp)
                 ) {
                     if (wachturmId != null) {
                         Image(
                             painter = pixelPainterResource(wachturmId),
                             contentDescription = "Römischer Wachturm",
-                            modifier = Modifier.size(64.dp),
+                            modifier = Modifier.size(120.dp),
                             contentScale = ContentScale.Fit
                         )
                     }
@@ -669,7 +781,7 @@ private fun RaidDialog(
                                 contentDescription = null,
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
-                                    .size(28.dp),
+                                    .size(48.dp),
                                 contentScale = ContentScale.Fit
                             )
                         }
@@ -679,7 +791,7 @@ private fun RaidDialog(
                             Image(
                                 painter = pixelPainterResource(fxId),
                                 contentDescription = null,
-                                modifier = Modifier.size(48.dp),
+                                modifier = Modifier.size(72.dp),
                                 contentScale = ContentScale.Fit
                             )
                         }
@@ -688,7 +800,7 @@ private fun RaidDialog(
                             Image(
                                 painter = pixelPainterResource(hitId),
                                 contentDescription = null,
-                                modifier = Modifier.size(40.dp),
+                                modifier = Modifier.size(64.dp),
                                 contentScale = ContentScale.Fit
                             )
                         }
