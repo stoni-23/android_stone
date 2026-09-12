@@ -38,10 +38,19 @@ fun StartScreen(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "Spiel-Starter",
+            text = "Germanische Siedlung am Limes",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "Errichte Langhaus, Holzfäller, Acker und Schmiede rund um die Thinghalle. " +
+                "Versorge dein Volk und raube den römischen Wachturm.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 360.dp)
         )
         Spacer(modifier = Modifier.height(40.dp))
         Button(
