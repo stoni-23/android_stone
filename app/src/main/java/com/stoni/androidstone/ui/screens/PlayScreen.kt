@@ -1,5 +1,7 @@
 package com.stoni.androidstone.ui.screens
 
+import androidx.annotation.DrawableRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,11 +44,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.stoni.androidstone.ui.PixelAssets
+import com.stoni.androidstone.ui.pixelPainterResource
+import com.stoni.androidstone.ui.rememberDrawableOrNull
 import com.stoni.androidstone.game.BuildCost
 import com.stoni.androidstone.game.BuildingType
 import com.stoni.androidstone.game.CENTER_INDEX
@@ -213,15 +221,21 @@ private fun ResourceBar(state: GameState) {
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        ResourceChip("Holz", r.holz, "Aus dem Forst")
-        ResourceChip("Getreide", r.getreide, "Vom Acker und der Jagd")
-        ResourceChip("Eisen", r.eisen, "Aus Erz und Beute")
-        ResourceChip("Ruhm", r.ruhm, "Was die Stämme von dir sagen")
+        ResourceChip("Holz", r.holz, "Aus dem Forst", PixelAssets.iconHolz)
+        ResourceChip("Getreide", r.getreide, "Vom Acker und der Jagd", PixelAssets.iconGetreide)
+        ResourceChip("Eisen", r.eisen, "Aus Erz und Beute", PixelAssets.iconEisen)
+        ResourceChip("Ruhm", r.ruhm, "Was die Stämme von dir sagen", PixelAssets.iconRuhm)
     }
 }
 
 @Composable
-private fun ResourceChip(label: String, value: Int, shortText: String) {
+private fun ResourceChip(
+    label: String,
+    value: Int,
+    shortText: String,
+    @DrawableRes iconId: Int
+) {
+    val icon = rememberDrawableOrNull(iconId)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = label,
@@ -229,12 +243,23 @@ private fun ResourceChip(label: String, value: Int, shortText: String) {
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             fontSize = 11.sp
         )
-        Text(
-            text = value.toString(),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onPrimaryContainer
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Image(
+                    painter = pixelPainterResource(icon),
+                    contentDescription = label,
+                    modifier = Modifier.size(16.dp),
+                    contentScale = ContentScale.Fit
+                )
+                Spacer(modifier = Modifier.width(3.dp))
+            }
+            Text(
+                text = value.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+        }
         Text(
             text = shortText,
             style = MaterialTheme.typography.labelSmall,
@@ -325,7 +350,11 @@ private fun GridCellView(
 ) {
     val cell = state.cellAt(index)
     val building = cell.building
+    val grassId = rememberDrawableOrNull(PixelAssets.grass)
+    val mappedSprite = building?.let { PixelAssets.building(it.type, it.level) } ?: 0
+    val spriteId = rememberDrawableOrNull(mappedSprite)
     val bg = when {
+        grassId != null -> Color.Transparent
         building?.type == BuildingType.THINGHALLE -> MaterialTheme.colorScheme.primary
         building != null -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f)
         else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -340,15 +369,49 @@ private fun GridCellView(
             .aspectRatio(1f)
             .clip(RoundedCornerShape(6.dp))
             .background(bg)
-            .clickable(onClick = onClick)
-            .padding(2.dp),
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
+        if (grassId != null) {
+            Image(
+                painter = pixelPainterResource(grassId),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.FillBounds
+            )
+        }
         if (building == null) {
+            if (grassId == null) {
+                Text(
+                    text = "+",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 18.sp
+                )
+            } else {
+                Text(
+                    text = "+",
+                    color = Color.White.copy(alpha = 0.55f),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        } else if (spriteId != null) {
+            Image(
+                painter = pixelPainterResource(spriteId),
+                contentDescription = building.type.displayName,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(1.dp),
+                contentScale = ContentScale.Fit
+            )
             Text(
-                text = "+",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 18.sp
+                text = "S${building.level}",
+                color = Color(0xFFF2E6D0),
+                fontSize = 8.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 1.dp)
             )
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -489,7 +552,17 @@ private fun RaidDialog(
         onDismissRequest = onDismiss,
         title = { Text("Römischer Wachturm") },
         text = {
-            Column {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                val wachturmId = rememberDrawableOrNull(PixelAssets.wachturm)
+                if (wachturmId != null) {
+                    Image(
+                        painter = pixelPainterResource(wachturmId),
+                        contentDescription = "Römischer Wachturm",
+                        modifier = Modifier.size(64.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 Text(
                     if (state.raidCooldown > 0) {
                         "Die Römer sind gewarnt. Wartet."
