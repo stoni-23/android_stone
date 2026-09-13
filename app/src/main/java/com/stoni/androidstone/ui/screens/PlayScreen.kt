@@ -41,6 +41,13 @@ import kotlin.math.abs
 import kotlin.random.Random
 
 /** Load from assets/ — bypasses aapt drawable crunch completely. */
+private fun wrap(v: Float, span: Float): Float {
+    if (span <= 0f) return 0f
+    var x = v % span
+    if (x < 0f) x += span
+    return x
+}
+
 private fun loadAsset(context: Context, name: String): ImageBitmap {
     val opts = BitmapFactory.Options().apply {
         inPreferredConfig = Bitmap.Config.ARGB_8888
@@ -67,9 +74,11 @@ private data class Fx(var x: Float, var y: Float, var life: Int, val kind: Int)
 fun PlayScreen(onExit: () -> Unit) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val shipDp = with(density) { 192.dp.toPx() }
-    val enemyDp = with(density) { 96.dp.toPx() }
-    val bigDp = with(density) { 144.dp.toPx() }
+    val shipPxSize = with(density) { 130.dp.toPx() }
+    val enemyPxSize = with(density) { 72.dp.toPx() }
+    val bigPxSize = with(density) { 110.dp.toPx() }
+    val bulletW = with(density) { 18.dp.toPx() }
+    val bulletH = with(density) { 36.dp.toPx() }
     val prefs = remember { context.getSharedPreferences("stargame", Context.MODE_PRIVATE) }
     var high by remember { mutableIntStateOf(prefs.getInt("highscore", 0)) }
 
@@ -93,7 +102,6 @@ fun PlayScreen(onExit: () -> Unit) {
     val boom3 = remember { loadAsset(context, "fx_explosion_3.png") }
     val muzzle1 = remember { loadAsset(context, "fx_muzzle_1.png") }
     val muzzle2 = remember { loadAsset(context, "fx_muzzle_2.png") }
-    val magentaProof = remember { loadAsset(context, "alpha_proof_magenta.png") }
 
     var w by remember { mutableFloatStateOf(1f) }
     var h by remember { mutableFloatStateOf(1f) }
@@ -104,7 +112,7 @@ fun PlayScreen(onExit: () -> Unit) {
     var paused by remember { mutableStateOf(false) }
     var gameOver by remember { mutableStateOf(false) }
     var won by remember { mutableStateOf(false) }
-    var banner by remember { mutableStateOf("Alpha-Check: Magenta hinter Glocke muss durchscheinen.") }
+    var banner by remember { mutableStateOf("Störfeuer. Bleib im Klang.") }
     var multishot by remember { mutableIntStateOf(0) }
     var shield by remember { mutableIntStateOf(0) }
     var speedBoost by remember { mutableIntStateOf(0) }
@@ -114,6 +122,7 @@ fun PlayScreen(onExit: () -> Unit) {
     var starY3 by remember { mutableFloatStateOf(0f) }
     var beamY by remember { mutableFloatStateOf(0f) }
     var muzzleFlash by remember { mutableIntStateOf(0) }
+    var iFrames by remember { mutableIntStateOf(0) }
 
     val bullets = remember { mutableListOf<Bullet>() }
     val enemies = remember { mutableListOf<Enemy>() }
@@ -125,8 +134,14 @@ fun PlayScreen(onExit: () -> Unit) {
     var spawned by remember { mutableIntStateOf(0) }
 
     fun hurtPlayer() {
-        if (shield > 0) { shield = 0; return }
+        if (iFrames > 0) return
+        if (shield > 0) {
+            shield = 0
+            iFrames = 45
+            return
+        }
         lives--
+        iFrames = 60
         if (lives <= 0) {
             gameOver = true
             banner = "Überstimmt. Nochmal?"
@@ -146,10 +161,13 @@ fun PlayScreen(onExit: () -> Unit) {
             val shipPx = shipX * sw
             val shipPy = shipY * sh
 
-            starY1 = (starY1 + 0.5f) % sh
-            starY2 = (starY2 + 1.0f) % sh
-            starY3 = (starY3 + 1.8f) % sh
-            beamY = (beamY + 0.7f) % (sh + 120f)
+            starY1 = wrap(starY1 + 0.6f, sh)
+            starY2 = wrap(starY2 + 1.2f, sh)
+            starY3 = wrap(starY3 + 2.0f, sh)
+            beamY = wrap(beamY + 0.8f, sh + 160f)
+            if (iFrames > 0) iFrames--
+            shipX = shipX.coerceIn(0.10f, 0.90f)
+            shipY = shipY.coerceIn(0.58f, 0.90f)
             if (muzzleFlash > 0) muzzleFlash--
 
             if (fireCd > 0) fireCd-- else {
@@ -157,11 +175,11 @@ fun PlayScreen(onExit: () -> Unit) {
                 muzzleFlash = 4
                 val speed = if (speedBoost > 0) -11f else -9f
                 if (multishot > 0) {
-                    bullets += Bullet(shipPx, shipPy - shipDp * 0.35f, speed, true, true)
-                    bullets += Bullet(shipPx - 32f, shipPy - shipDp * 0.25f, speed, true, true)
-                    bullets += Bullet(shipPx + 32f, shipPy - shipDp * 0.25f, speed, true, true)
+                    bullets += Bullet(shipPx, shipPy - shipPxSize * 0.35f, speed, true, true)
+                    bullets += Bullet(shipPx - 32f, shipPy - shipPxSize * 0.25f, speed, true, true)
+                    bullets += Bullet(shipPx + 32f, shipPy - shipPxSize * 0.25f, speed, true, true)
                 } else {
-                    bullets += Bullet(shipPx, shipPy - shipDp * 0.35f, speed, true)
+                    bullets += Bullet(shipPx, shipPy - shipPxSize * 0.35f, speed, true)
                 }
             }
             if (multishot > 0) multishot--
@@ -213,7 +231,7 @@ fun PlayScreen(onExit: () -> Unit) {
             val hitBullets = mutableSetOf<Bullet>()
             for (b in bullets.filter { it.fromPlayer }) {
                 for (e in enemies) {
-                    val r = if (e.big) bigDp * 0.4f else enemyDp * 0.4f
+                    val r = if (e.big) bigPxSize * 0.4f else enemyPxSize * 0.4f
                     if (abs(b.x - e.x) < r && abs(b.y - e.y) < r) {
                         hitBullets += b
                         e.hp--
@@ -233,7 +251,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
             val enemyHits = mutableSetOf<Bullet>()
             for (b in bullets.filter { !it.fromPlayer }) {
-                if (abs(b.x - shipPx) < shipDp * 0.28f && abs(b.y - shipPy) < shipDp * 0.28f) {
+                if (abs(b.x - shipPx) < shipPxSize * 0.28f && abs(b.y - shipPy) < shipPxSize * 0.28f) {
                     enemyHits += b
                     fx += Fx(shipPx, shipPy, 10, 0)
                     hurtPlayer()
@@ -242,7 +260,7 @@ fun PlayScreen(onExit: () -> Unit) {
             bullets.removeAll { it in enemyHits }
 
             enemies.toList().forEach { e ->
-                val r = if (e.big) bigDp * 0.4f else enemyDp * 0.4f
+                val r = if (e.big) bigPxSize * 0.4f else enemyPxSize * 0.4f
                 if (abs(e.x - shipPx) < r && abs(e.y - shipPy) < r) {
                     fx += Fx(e.x, e.y, 14, 1)
                     enemies.remove(e)
@@ -274,8 +292,8 @@ fun PlayScreen(onExit: () -> Unit) {
                         change.consume()
                         if (!paused && !gameOver && !won) {
                             val scale = if (speedBoost > 0) 1.35f else 1f
-                            shipX = (shipX + drag.x / w * scale).coerceIn(0.08f, 0.92f)
-                            shipY = (shipY + drag.y / h * scale).coerceIn(0.35f, 0.92f)
+                            shipX = (shipX + drag.x / w * scale).coerceIn(0.10f, 0.90f)
+                            shipY = (shipY + drag.y / h * scale).coerceIn(0.58f, 0.90f)
                         }
                     }
                 }
@@ -293,62 +311,50 @@ fun PlayScreen(onExit: () -> Unit) {
 
             val shipPx = shipX * w
             val shipPy = shipY * h
-            val half = shipDp / 2f
-
-            // Magenta proof plate UNDER ship — if white shows instead of magenta, wrong/old path
-            drawImg(
-                magentaProof,
-                shipPx - half - 8f,
-                shipPy - half - 8f,
-                shipDp + 16f,
-                shipDp + 16f
-            )
-            // also solid magenta fallback strip
-            drawRect(
-                Color(0xFFFF00FF),
-                topLeft = Offset(shipPx - half - 4f, shipPy - half - 4f),
-                size = Size(shipDp + 8f, shipDp + 8f)
-            )
-            drawImg(shipImg, shipPx - half, shipPy - half, shipDp, shipDp)
+            val half = shipPxSize / 2f
+            if (iFrames == 0 || (tick / 3) % 2 == 0) {
+                drawImg(shipImg, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
+            }
 
             if (muzzleFlash > 0) {
+                drawCircle(Color(0x88FFB74D), 28f, Offset(shipPx, shipPy - half - 10f))
                 val m = if (muzzleFlash > 2) muzzle1 else muzzle2
-                drawImg(m, shipPx - 28f, shipPy - half - 36f, 56f, 56f)
+                drawImg(m, shipPx - 36f, shipPy - half - 48f, 72f, 72f)
             }
             if (shield > 0) {
-                drawCircle(Color(0x554FC3F7), shipDp * 0.42f, Offset(shipPx, shipPy))
+                drawCircle(Color(0x554FC3F7), shipPxSize * 0.42f, Offset(shipPx, shipPy))
             }
 
             enemies.forEachIndexed { i, e ->
-                // magenta plate under enemies too
-                val sz = if (e.big) bigDp else enemyDp
-                drawRect(
-                    Color(0xFFFF00FF),
-                    topLeft = Offset(e.x - sz / 2f - 2f, e.y - sz / 2f - 2f),
-                    size = Size(sz + 4f, sz + 4f)
-                )
                 if (e.big) {
-                    drawImg(enemyBig, e.x - bigDp / 2f, e.y - bigDp / 2f, bigDp, bigDp)
+                    drawImg(enemyBig, e.x - bigPxSize / 2f, e.y - bigPxSize / 2f, bigPxSize, bigPxSize)
                 } else {
                     val img = if ((tick / 12 + i) % 2 == 0) enemyImg else enemyImgB
-                    drawImg(img, e.x - enemyDp / 2f, e.y - enemyDp / 2f, enemyDp, enemyDp)
+                    drawImg(img, e.x - enemyPxSize / 2f, e.y - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
                 }
             }
             bullets.forEach { b ->
                 if (b.fromPlayer) {
                     val img = if (b.triple) bulletTriple else bulletImg
-                    drawImg(img, b.x - 8f, b.y - 16f, 16f, 32f)
+                    drawImg(img, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH)
                 } else {
-                    drawImg(bulletEnemy, b.x - 8f, b.y - 12f, 16f, 24f)
+                    drawImg(bulletEnemy, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH * 0.85f)
                 }
             }
             powerups.forEach { p ->
+                val glow = when (p.type) {
+                    0 -> Color(0x66FFD54F)
+                    1 -> Color(0x664FC3F7)
+                    else -> Color(0x6681C784)
+                }
+                drawCircle(glow, 52f, Offset(p.x, p.y))
+                drawCircle(glow.copy(alpha = 0.35f), 68f, Offset(p.x, p.y))
                 val img = when (p.type) { 0 -> puMulti; 1 -> puShield; else -> puSpeed }
                 drawImg(img, p.x - 40f, p.y - 40f, 80f, 80f)
             }
             fx.forEach { f ->
                 val img = when (f.kind) { 0 -> boom1; 1 -> boom2; else -> boom3 }
-                val s = 48f + (14 - f.life) * 2f
+                val s = 96f + (20 - f.life) * 6f
                 drawImg(img, f.x - s / 2, f.y - s / 2, s, s)
             }
             repeat(lives.coerceAtLeast(0)) { i ->
