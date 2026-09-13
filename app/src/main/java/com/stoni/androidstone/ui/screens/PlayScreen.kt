@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -33,13 +34,6 @@ import com.stoni.androidstone.game.loadStargameAsset
 import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
-
-private fun wrap(v: Float, span: Float): Float {
-    if (span <= 0f) return 0f
-    var x = v % span
-    if (x < 0f) x += span
-    return x
-}
 
 private enum class EnemyKind { BASIC, LANG, RUND, BIG }
 
@@ -251,8 +245,8 @@ fun PlayScreen(onExit: () -> Unit) {
             shipPx += shipVx
             shipPy += shipVy
 
-            bgOffsetX = wrap(bgOffsetX - shipVx * 0.25f, sw)
-            bgOffsetY = wrap(bgOffsetY - shipVy * 0.25f, sh)
+            bgOffsetX -= shipVx * 0.25f
+            bgOffsetY -= shipVy * 0.25f
 
             val halfShip = shipPxSize / 2f
             if (shipPx < halfShip) { shipPx = halfShip; shipVx = -shipVx * 0.4f }
@@ -492,10 +486,11 @@ fun PlayScreen(onExit: () -> Unit) {
             h = size.height
 
             drawRect(Color(0xFF050510))
-            drawImg(starFar, bgOffsetX * 0.3f, bgOffsetY * 0.3f, w, h)
-            drawImg(starFar, bgOffsetX * 0.3f - w, bgOffsetY * 0.3f, w, h)
-            drawImg(starMid, bgOffsetX * 0.6f, bgOffsetY * 0.6f, w, h)
-            drawImg(starNear, bgOffsetX, bgOffsetY, w, h)
+
+            // Nahtloses gespiegeltes Parallax-Gitter (keine Kanten mehr!)
+            drawMirroredTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
+            drawMirroredTiled(starMid, bgOffsetX * 0.50f, bgOffsetY * 0.50f, w, h)
+            drawMirroredTiled(starNear, bgOffsetX * 0.90f, bgOffsetY * 0.90f, w, h)
 
             val half = shipPxSize / 2f
 
@@ -612,6 +607,29 @@ fun PlayScreen(onExit: () -> Unit) {
         if (gameOver || won) {
             TextButton(onClick = onExit, modifier = Modifier.align(Alignment.BottomCenter).padding(32.dp)) {
                 Text(if (won) "Menü" else "Nochmal / Menü", color = Color.White, fontSize = 16.sp)
+            }
+        }
+    }
+}
+
+// Spiegelt abwechselnd horizontal & vertikal für 100% nahtlose Kanten
+private fun DrawScope.drawMirroredTiled(img: ImageBitmap, offX: Float, offY: Float, sw: Float, sh: Float) {
+    val tw = sw
+    val th = sh
+    val startCol = floor(-offX / tw).toInt() - 1
+    val endCol = ceil((sw - offX) / tw).toInt() + 1
+    val startRow = floor(-offY / th).toInt() - 1
+    val endRow = ceil((sh - offY) / th).toInt() + 1
+
+    for (col in startCol..endCol) {
+        for (row in startRow..endRow) {
+            val posX = offX + col * tw
+            val posY = offY + row * th
+            val flipX = if (col % 2 != 0) -1f else 1f
+            val flipY = if (row % 2 != 0) -1f else 1f
+
+            scale(scaleX = flipX, scaleY = flipY, pivot = Offset(posX + tw / 2f, posY + th / 2f)) {
+                drawImg(img, posX, posY, tw, th)
             }
         }
     }
