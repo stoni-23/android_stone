@@ -74,7 +74,7 @@ private data class Fx(var x: Float, var y: Float, var life: Int, val kind: Int)
 fun PlayScreen(onExit: () -> Unit) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val shipPxSize = with(density) { 130.dp.toPx() }
+    val shipPxSize = with(density) { 112.dp.toPx() }
     val enemyPxSize = with(density) { 72.dp.toPx() }
     val bigPxSize = with(density) { 110.dp.toPx() }
     val bulletW = with(density) { 18.dp.toPx() }
@@ -82,7 +82,7 @@ fun PlayScreen(onExit: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("stargame", Context.MODE_PRIVATE) }
     var high by remember { mutableIntStateOf(prefs.getInt("highscore", 0)) }
 
-    val shipImg = remember { loadAsset(context, "player_glocke_160.png") }
+    val shipImg = remember { loadAsset(context, "player_glocke_112.png") }
     val enemyImg = remember { loadAsset(context, "enemy_stoerer_64.png") }
     val enemyImgB = remember { loadAsset(context, "enemy_stoerer_b_64.png") }
     val enemyBig = remember { loadAsset(context, "enemy_stoerer_big_128.png") }
@@ -102,6 +102,10 @@ fun PlayScreen(onExit: () -> Unit) {
     val boom3 = remember { loadAsset(context, "fx_explosion_3.png") }
     val muzzle1 = remember { loadAsset(context, "fx_muzzle_1.png") }
     val muzzle2 = remember { loadAsset(context, "fx_muzzle_2.png") }
+    val death1 = remember { loadAsset(context, "fx_player_death_1.png") }
+    val death2 = remember { loadAsset(context, "fx_player_death_2.png") }
+    val death3 = remember { loadAsset(context, "fx_player_death_3.png") }
+    val death4 = remember { loadAsset(context, "fx_player_death_4.png") }
 
     var w by remember { mutableFloatStateOf(1f) }
     var h by remember { mutableFloatStateOf(1f) }
@@ -123,6 +127,7 @@ fun PlayScreen(onExit: () -> Unit) {
     var beamY by remember { mutableFloatStateOf(0f) }
     var muzzleFlash by remember { mutableIntStateOf(0) }
     var iFrames by remember { mutableIntStateOf(0) }
+    var deathFrame by remember { mutableIntStateOf(0) }
 
     val bullets = remember { mutableListOf<Bullet>() }
     val enemies = remember { mutableListOf<Enemy>() }
@@ -283,6 +288,16 @@ fun PlayScreen(onExit: () -> Unit) {
         }
     }
 
+    LaunchedEffect(gameOver) {
+        if (gameOver) {
+            deathFrame = 0
+            while (deathFrame < 4) {
+                delay(120)
+                deathFrame++
+            }
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         Canvas(
             modifier = Modifier
@@ -312,7 +327,16 @@ fun PlayScreen(onExit: () -> Unit) {
             val shipPx = shipX * w
             val shipPy = shipY * h
             val half = shipPxSize / 2f
-            if (iFrames == 0 || (tick / 3) % 2 == 0) {
+            if (gameOver) {
+                val d = when (deathFrame.coerceIn(0, 3)) {
+                    0 -> death1
+                    1 -> death2
+                    2 -> death3
+                    else -> death4
+                }
+                val ds = shipPxSize * 1.35f
+                drawImg(d, shipPx - ds / 2f, shipPy - ds / 2f, ds, ds)
+            } else if (iFrames == 0 || (tick / 3) % 2 == 0) {
                 drawImg(shipImg, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
             }
 
