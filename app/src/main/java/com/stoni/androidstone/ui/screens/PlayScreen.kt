@@ -5,21 +5,12 @@ import android.media.AudioAttributes
 import android.media.SoundPool
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -40,11 +31,7 @@ import androidx.core.content.edit
 import com.stoni.androidstone.R
 import com.stoni.androidstone.game.loadStargameAsset
 import kotlinx.coroutines.delay
-import kotlin.math.PI
-import kotlin.math.atan2
-import kotlin.math.cos
-import kotlin.math.hypot
-import kotlin.math.sin
+import kotlin.math.*
 import kotlin.random.Random
 
 private fun wrap(v: Float, span: Float): Float {
@@ -68,8 +55,6 @@ private data class Enemy(
     var x: Float,
     var y: Float,
     var hp: Int = 1,
-    var dx: Float = 1.2f,
-    var dy: Float = 1.0f,
     var fireCd: Int = 40,
     val big: Boolean = false
 )
@@ -102,9 +87,7 @@ private class GameSfx(context: Context) {
         if (id != 0) pool.play(id, vol, vol, 1, 0, 1f)
     }
 
-    fun release() {
-        pool.release()
-    }
+    fun release() { pool.release() }
 }
 
 @Composable
@@ -120,9 +103,7 @@ fun PlayScreen(onExit: () -> Unit) {
     var high by remember { mutableIntStateOf(prefs.getInt("highscore", 0)) }
 
     val sfx = remember { GameSfx(context) }
-    DisposableEffect(Unit) {
-        onDispose { sfx.release() }
-    }
+    DisposableEffect(Unit) { onDispose { sfx.release() } }
 
     val shipSingle = remember { loadStargameAsset(context, "player_glocke_single_128.png") }
     val shipTriple = remember { loadStargameAsset(context, "player_glocke_triple_128.png") }
@@ -152,13 +133,14 @@ fun PlayScreen(onExit: () -> Unit) {
     var w by remember { mutableFloatStateOf(1f) }
     var h by remember { mutableFloatStateOf(1f) }
 
+    // Position & Verfolgungs-Flugphysik
     var shipPx by remember { mutableFloatStateOf(540f) }
     var shipPy by remember { mutableFloatStateOf(960f) }
     var shipVx by remember { mutableFloatStateOf(0f) }
     var shipVy by remember { mutableFloatStateOf(0f) }
     var shipAngle by remember { mutableFloatStateOf(0f) }
-    var targetTouchX by remember { mutableFloatStateOf(540f) }
-    var targetTouchY by remember { mutableFloatStateOf(400f) }
+    var fingerX by remember { mutableFloatStateOf(540f) }
+    var fingerY by remember { mutableFloatStateOf(700f) }
     var isTouching by remember { mutableStateOf(false) }
 
     var score by remember { mutableIntStateOf(0) }
@@ -166,7 +148,7 @@ fun PlayScreen(onExit: () -> Unit) {
     var paused by remember { mutableStateOf(false) }
     var gameOver by remember { mutableStateOf(false) }
     var won by remember { mutableStateOf(false) }
-    var banner by remember { mutableStateOf("Freiflug aktiv. Glocke steuern!") }
+    var banner by remember { mutableStateOf("Wische mit dem Finger – Glocke folgt!") }
     var multishot by remember { mutableIntStateOf(0) }
     var shield by remember { mutableIntStateOf(0) }
     var speedBoost by remember { mutableIntStateOf(0) }
@@ -210,8 +192,8 @@ fun PlayScreen(onExit: () -> Unit) {
         if (w > 10f && h > 10f && shipPx == 540f && shipPy == 960f) {
             shipPx = w / 2f
             shipPy = h * 0.75f
-            targetTouchX = shipPx
-            targetTouchY = shipPy - 200f
+            fingerX = shipPx
+            fingerY = shipPy - 150f
         }
     }
 
@@ -228,65 +210,70 @@ fun PlayScreen(onExit: () -> Unit) {
             if (iFrames > 0) iFrames--
             if (muzzleFlash > 0) muzzleFlash--
 
-            val tdx = targetTouchX - shipPx
-            val tdy = targetTouchY - shipPy
-            val distToTouch = hypot(tdx, tdy)
+            // FINGER-VERFOLGUNG (Glocke jagt den Finger)
+            if (isTouching) {
+                val dx = fingerX - shipPx
+                val dy = fingerY - shipPy
+                val dist = hypot(dx, dy)
 
-            if (distToTouch > 15f) {
-                val targetAngle = (atan2(tdy, tdx) * 180.0 / PI).toFloat() + 90f
-                var angleDiff = (targetAngle - shipAngle) % 360f
-                if (angleDiff > 180f) angleDiff -= 360f
-                if (angleDiff < -180f) angleDiff += 360f
-                shipAngle += angleDiff * 0.22f
+                if (dist > 18f) {
+                    // Glocke dreht sich in Richtung Finger
+                    val targetAngle = (atan2(dy, dx) * 180.0 / PI).toFloat() + 90f
+                    var diff = (targetAngle - shipAngle) % 360f
+                    if (diff > 180f) diff -= 360f
+                    if (diff < -180f) diff += 360f
+                    shipAngle += diff * 0.28f
 
-                if (isTouching) {
-                    val thrustPower = if (speedBoost > 0) 1.2f else 0.85f
-                    val moveRad = (shipAngle - 90f) * PI / 180.0
-                    shipVx += (cos(moveRad) * thrustPower).toFloat()
-                    shipVy += (sin(moveRad) * thrustPower).toFloat()
+                    // Beschleunigung direkt zum Finger
+                    val chaseSpeed = if (speedBoost > 0) 1.6f else 1.1f
+                    shipVx += (dx / dist) * chaseSpeed
+                    shipVy += (dy / dist) * chaseSpeed
                 }
             }
 
-            val friction = 0.93f
+            // Flug-Trägheit & Gleiten
+            val friction = 0.90f
             shipVx *= friction
             shipVy *= friction
-            val maxSpd = if (speedBoost > 0) 16f else 11f
-            val curSpd = hypot(shipVx, shipVy)
-            if (curSpd > maxSpd) {
-                shipVx = (shipVx / curSpd) * maxSpd
-                shipVy = (shipVy / curSpd) * maxSpd
+            val maxSpd = if (speedBoost > 0) 22f else 16f
+            val currentSpd = hypot(shipVx, shipVy)
+            if (currentSpd > maxSpd) {
+                shipVx = (shipVx / currentSpd) * maxSpd
+                shipVy = (shipVy / currentSpd) * maxSpd
             }
 
             shipPx += shipVx
             shipPy += shipVy
 
+            // Bildschirmränder abprallen
             val halfShip = shipPxSize / 2f
-            if (shipPx < halfShip) { shipPx = halfShip; shipVx = -shipVx * 0.4f }
-            if (shipPx > sw - halfShip) { shipPx = sw - halfShip; shipVx = -shipVx * 0.4f }
-            if (shipPy < halfShip) { shipPy = halfShip; shipVy = -shipVy * 0.4f }
-            if (shipPy > sh - halfShip) { shipPy = sh - halfShip; shipVy = -shipVy * 0.4f }
+            if (shipPx < halfShip) { shipPx = halfShip; shipVx = -shipVx * 0.5f }
+            if (shipPx > sw - halfShip) { shipPx = sw - halfShip; shipVx = -shipVx * 0.5f }
+            if (shipPy < halfShip) { shipPy = halfShip; shipVy = -shipVy * 0.5f }
+            if (shipPy > sh - halfShip) { shipPy = sh - halfShip; shipVy = -shipVy * 0.5f }
 
+            // Schusslogik nach vorne
             if (fireCd > 0) fireCd-- else {
-                fireCd = if (multishot > 0) 9 else 15
+                fireCd = if (multishot > 0) 9 else 14
                 muzzleFlash = 4
                 sfx.shoot()
-                val bSpeed = if (speedBoost > 0) 22f else 18f
+                val bSpeed = if (speedBoost > 0) 24f else 20f
                 val shootRad = (shipAngle - 90f) * PI / 180.0
                 val bvx = (cos(shootRad) * bSpeed).toFloat()
                 val bvy = (sin(shootRad) * bSpeed).toFloat()
 
                 val noseDist = shipPxSize * 0.42f
-                val muzzleX = shipPx + (cos(shootRad) * noseDist).toFloat()
-                val muzzleY = shipPy + (sin(shootRad) * noseDist).toFloat()
+                val mx = shipPx + (cos(shootRad) * noseDist).toFloat()
+                val my = shipPy + (sin(shootRad) * noseDist).toFloat()
 
                 if (multishot > 0) {
-                    val spread1 = (shipAngle - 90f - 14f) * PI / 180.0
-                    val spread2 = (shipAngle - 90f + 14f) * PI / 180.0
-                    bullets += Bullet(muzzleX, muzzleY, bvx, bvy, shipAngle, fromPlayer = true, triple = true)
-                    bullets += Bullet(muzzleX, muzzleY, (cos(spread1) * bSpeed).toFloat(), (sin(spread1) * bSpeed).toFloat(), shipAngle - 14f, fromPlayer = true, triple = true)
-                    bullets += Bullet(muzzleX, muzzleY, (cos(spread2) * bSpeed).toFloat(), (sin(spread2) * bSpeed).toFloat(), shipAngle + 14f, fromPlayer = true, triple = true)
+                    val sp1 = (shipAngle - 90f - 14f) * PI / 180.0
+                    val sp2 = (shipAngle - 90f + 14f) * PI / 180.0
+                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true, true)
+                    bullets += Bullet(mx, my, (cos(sp1) * bSpeed).toFloat(), (sin(sp1) * bSpeed).toFloat(), shipAngle - 14f, true, true)
+                    bullets += Bullet(mx, my, (cos(sp2) * bSpeed).toFloat(), (sin(sp2) * bSpeed).toFloat(), shipAngle + 14f, true, true)
                 } else {
-                    bullets += Bullet(muzzleX, muzzleY, bvx, bvy, shipAngle, fromPlayer = true)
+                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true)
                 }
             }
 
@@ -295,12 +282,12 @@ fun PlayScreen(onExit: () -> Unit) {
             if (speedBoost > 0) speedBoost--
             val maxSpawn = when (wave) { 1 -> 8; 2 -> 14; else -> 20 }
             if (spawnCd > 0) spawnCd-- else if (spawned < maxSpawn) {
-                spawnCd = 50 - wave * 4
+                spawnCd = 48 - wave * 4
                 val big = wave >= 3 && Random.nextFloat() < 0.25f
-                val spawnEdge = Random.nextInt(4)
+                val edge = Random.nextInt(4)
                 var ex = 0f
                 var ey = 0f
-                when (spawnEdge) {
+                when (edge) {
                     0 -> { ex = Random.nextFloat() * sw; ey = -60f }
                     1 -> { ex = sw + 60f; ey = Random.nextFloat() * sh }
                     2 -> { ex = Random.nextFloat() * sw; ey = sh + 60f }
@@ -310,9 +297,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     x = ex,
                     y = ey,
                     hp = if (big) 4 else if (wave >= 2) 2 else 1,
-                    dx = 0f,
-                    dy = 0f,
-                    fireCd = 40 + Random.nextInt(35),
+                    fireCd = 35 + Random.nextInt(35),
                     big = big
                 )
                 spawned++
@@ -342,16 +327,12 @@ fun PlayScreen(onExit: () -> Unit) {
                         val ebvx = (edx / dist) * ebSpeed
                         val ebvy = (edy / dist) * ebSpeed
                         val ebAngle = (atan2(ebvy, ebvx) * 180.0 / PI).toFloat() + 90f
-                        bullets += Bullet(e.x, e.y, ebvx, ebvy, ebAngle, fromPlayer = false)
+                        bullets += Bullet(e.x, e.y, ebvx, ebvy, ebAngle, false)
                     }
                 }
             }
 
-            bullets.forEach {
-                it.x += it.vx
-                it.y += it.vy
-            }
-
+            bullets.forEach { it.x += it.vx; it.y += it.vy }
             powerups.forEach { it.y += 0.8f }
             fx.forEach { it.life-- }
             fx.removeAll { it.life <= 0 }
@@ -430,29 +411,21 @@ fun PlayScreen(onExit: () -> Unit) {
         Modifier
             .fillMaxSize()
             .pointerInput(Unit) {
+                // FLÜSSIGES STREICHEN / ZIEHEN
                 detectDragGestures(
                     onDragStart = { offset ->
                         isTouching = true
-                        targetTouchX = offset.x
-                        targetTouchY = offset.y
+                        fingerX = offset.x
+                        fingerY = offset.y
                     },
                     onDrag = { change, _ ->
-                        targetTouchX = change.position.x
-                        targetTouchY = change.position.y
+                        change.consume()
+                        isTouching = true
+                        fingerX = change.position.x
+                        fingerY = change.position.y
                     },
                     onDragEnd = { isTouching = false },
                     onDragCancel = { isTouching = false }
-                )
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = { offset ->
-                        isTouching = true
-                        targetTouchX = offset.x
-                        targetTouchY = offset.y
-                        tryAwaitRelease()
-                        isTouching = false
-                    }
                 )
             }
     ) {
@@ -542,15 +515,6 @@ fun PlayScreen(onExit: () -> Unit) {
 
             if (shield > 0) {
                 drawCircle(Color(0x554FC3F7), shipPxSize * 0.55f, Offset(shipPx, shipPy))
-            }
-
-            if (isTouching && !gameOver) {
-                drawCircle(
-                    color = Color(0x66C9A66B),
-                    radius = 24f,
-                    center = Offset(targetTouchX, targetTouchY),
-                    style = Stroke(width = 2f)
-                )
             }
 
             repeat(lives.coerceAtLeast(0)) { i ->
