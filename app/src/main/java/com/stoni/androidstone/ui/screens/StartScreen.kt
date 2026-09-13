@@ -44,7 +44,7 @@ import kotlinx.coroutines.delay
 private data class IntroBeat(val speaker: String, val line: String)
 
 private val introBeats = listOf(
-    IntroBeat("MAJOR", "Pimpelhuber! Die Karte des Sieges. Sofort."),
+    IntroBeat("MAJOR", "Holen Sie die Karte, Pimpelhuber — die Karte des Sieges."),
     IntroBeat("PIMPELHUBER", "Zu Befehl, Herr Major!"),
     IntroBeat("MAJOR", "Du fliegst in die Reichszeitglocke. Allein."),
     IntroBeat("PIMPELHUBER", "In… die Glocke, Herr Major?"),
