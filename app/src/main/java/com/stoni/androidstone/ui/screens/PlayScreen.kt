@@ -54,7 +54,9 @@ fun PlayScreen(onExit: () -> Unit) {
     val enemyImg = remember { loadImg(context, R.drawable.enemy_stoerer_64) }
     val bulletImg = remember { loadImg(context, R.drawable.bullet_player) }
     val starFar = remember { loadImg(context, R.drawable.bg_stars_far) }
+    val starMid = remember { loadImg(context, R.drawable.bg_stars_mid) }
     val starNear = remember { loadImg(context, R.drawable.bg_stars_near) }
+    val beamImg = remember { loadImg(context, R.drawable.bg_beam) }
     val heartImg = remember { loadImg(context, R.drawable.ui_heart) }
     val puMulti = remember { loadImg(context, R.drawable.powerup_multishot_48) }
     val puShield = remember { loadImg(context, R.drawable.powerup_shield_48) }
@@ -75,6 +77,8 @@ fun PlayScreen(onExit: () -> Unit) {
     var tick by remember { mutableIntStateOf(0) }
     var starY1 by remember { mutableFloatStateOf(0f) }
     var starY2 by remember { mutableFloatStateOf(0f) }
+    var starY3 by remember { mutableFloatStateOf(0f) }
+    var beamY by remember { mutableFloatStateOf(0f) }
 
     val bullets = remember { mutableListOf<Bullet>() }
     val enemies = remember { mutableListOf<Enemy>() }
@@ -94,8 +98,10 @@ fun PlayScreen(onExit: () -> Unit) {
             val shipPy = sh * 0.88f
             val moveSpeed = if (speedBoost > 0) 0.025f else 0.018f
 
-            starY1 = (starY1 + 1.2f) % sh
-            starY2 = (starY2 + 2.4f) % sh
+            starY1 = (starY1 + 0.8f) % sh
+            starY2 = (starY2 + 1.6f) % sh
+            starY3 = (starY3 + 2.8f) % sh
+            beamY = (beamY + 1.1f) % (sh + 120f)
 
             if (fireCd > 0) fireCd-- else {
                 fireCd = if (multishot > 0) 8 else 12
@@ -213,11 +219,14 @@ fun PlayScreen(onExit: () -> Unit) {
         ) {
             w = size.width
             h = size.height
-            // parallax
+            // parallax 3-layer + beam
             drawImg(starFar, 0f, starY1 - h, w, h)
             drawImg(starFar, 0f, starY1, w, h)
-            drawImg(starNear, 0f, starY2 - h, w, h)
-            drawImg(starNear, 0f, starY2, w, h)
+            drawImg(starMid, 0f, starY2 - h, w, h)
+            drawImg(starMid, 0f, starY2, w, h)
+            drawImg(beamImg, w * 0.72f - 16f, beamY - 80f, 32f, 160f)
+            drawImg(starNear, 0f, starY3 - h, w, h)
+            drawImg(starNear, 0f, starY3, w, h)
 
             val shipPx = shipX * w
             val shipPy = h * 0.88f
