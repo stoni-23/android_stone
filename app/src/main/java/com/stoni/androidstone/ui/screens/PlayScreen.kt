@@ -1,8 +1,6 @@
 package com.stoni.androidstone.ui.screens
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.media.AudioAttributes
 import android.media.SoundPool
 import androidx.compose.foundation.Canvas
@@ -28,7 +26,6 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -40,33 +37,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import com.stoni.androidstone.R
+import com.stoni.androidstone.game.loadStargameAsset
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.random.Random
 
-/** Load from assets/ — bypasses aapt drawable crunch completely. */
 private fun wrap(v: Float, span: Float): Float {
     if (span <= 0f) return 0f
     var x = v % span
     if (x < 0f) x += span
     return x
-}
-
-private fun loadAsset(context: Context, name: String): ImageBitmap {
-    val opts = BitmapFactory.Options().apply {
-        inPreferredConfig = Bitmap.Config.ARGB_8888
-        inScaled = false
-        inDensity = 0
-        inTargetDensity = 0
-    }
-    val bmp = context.assets.open("stargame/$name").use { stream ->
-        BitmapFactory.decodeStream(stream, null, opts)
-    } ?: error("missing asset stargame/$name")
-    val argb = if (bmp.config != Bitmap.Config.ARGB_8888) {
-        bmp.copy(Bitmap.Config.ARGB_8888, false).also { if (it !== bmp) bmp.recycle() }
-    } else bmp
-    check(argb.hasAlpha()) { "no alpha on $name — wrong/old asset" }
-    return argb.asImageBitmap()
 }
 
 private data class Bullet(var x: Float, var y: Float, val dy: Float, val fromPlayer: Boolean, val triple: Boolean = false)
@@ -125,29 +105,30 @@ fun PlayScreen(onExit: () -> Unit) {
         onDispose { sfx.release() }
     }
 
-    val shipImg = remember { loadAsset(context, "player_glocke_112.png") }
-    val enemyImg = remember { loadAsset(context, "enemy_stoerer_64.png") }
-    val enemyImgB = remember { loadAsset(context, "enemy_stoerer_b_64.png") }
-    val enemyBig = remember { loadAsset(context, "enemy_stoerer_big_128.png") }
-    val bulletImg = remember { loadAsset(context, "bullet_player.png") }
-    val bulletTriple = remember { loadAsset(context, "bullet_player_triple.png") }
-    val bulletEnemy = remember { loadAsset(context, "bullet_enemy.png") }
-    val starFar = remember { loadAsset(context, "bg_stars_far.png") }
-    val starMid = remember { loadAsset(context, "bg_stars_mid.png") }
-    val starNear = remember { loadAsset(context, "bg_stars_near.png") }
-    val heartImg = remember { loadAsset(context, "ui_heart.png") }
-    val puMulti = remember { loadAsset(context, "powerup_multishot_80.png") }
-    val puShield = remember { loadAsset(context, "powerup_shield_80.png") }
-    val puSpeed = remember { loadAsset(context, "powerup_speed_80.png") }
-    val boom1 = remember { loadAsset(context, "fx_explosion_1.png") }
-    val boom2 = remember { loadAsset(context, "fx_explosion_2.png") }
-    val boom3 = remember { loadAsset(context, "fx_explosion_3.png") }
-    val muzzle1 = remember { loadAsset(context, "fx_muzzle_1.png") }
-    val muzzle2 = remember { loadAsset(context, "fx_muzzle_2.png") }
-    val death1 = remember { loadAsset(context, "fx_player_death_1.png") }
-    val death2 = remember { loadAsset(context, "fx_player_death_2.png") }
-    val death3 = remember { loadAsset(context, "fx_player_death_3.png") }
-    val death4 = remember { loadAsset(context, "fx_player_death_4.png") }
+    val shipSingle = remember { loadStargameAsset(context, "player_glocke_single_128.png") }
+    val shipTriple = remember { loadStargameAsset(context, "player_glocke_triple_128.png") }
+    val enemyImg = remember { loadStargameAsset(context, "enemy_stoerer_64.png") }
+    val enemyImgB = remember { loadStargameAsset(context, "enemy_stoerer_b_64.png") }
+    val enemyBig = remember { loadStargameAsset(context, "enemy_stoerer_big_128.png") }
+    val bulletImg = remember { loadStargameAsset(context, "bullet_player.png") }
+    val bulletTriple = remember { loadStargameAsset(context, "bullet_player_triple.png") }
+    val bulletEnemy = remember { loadStargameAsset(context, "bullet_enemy.png") }
+    val starFar = remember { loadStargameAsset(context, "bg_stars_far.png") }
+    val starMid = remember { loadStargameAsset(context, "bg_stars_mid.png") }
+    val starNear = remember { loadStargameAsset(context, "bg_stars_near.png") }
+    val heartImg = remember { loadStargameAsset(context, "ui_heart.png") }
+    val puWeapon = remember { loadStargameAsset(context, "icon_mode_weapon_64.png") }
+    val puHeal = remember { loadStargameAsset(context, "icon_mode_heal_64.png") }
+    val puSpeed = remember { loadStargameAsset(context, "powerup_speed_64.png") }
+    val boom1 = remember { loadStargameAsset(context, "fx_explosion_1.png") }
+    val boom2 = remember { loadStargameAsset(context, "fx_explosion_2.png") }
+    val boom3 = remember { loadStargameAsset(context, "fx_explosion_3.png") }
+    val muzzle1 = remember { loadStargameAsset(context, "fx_muzzle_1.png") }
+    val muzzle2 = remember { loadStargameAsset(context, "fx_muzzle_2.png") }
+    val death1 = remember { loadStargameAsset(context, "fx_player_death_1.png") }
+    val death2 = remember { loadStargameAsset(context, "fx_player_death_2.png") }
+    val death3 = remember { loadStargameAsset(context, "fx_player_death_3.png") }
+    val death4 = remember { loadStargameAsset(context, "fx_player_death_4.png") }
 
     var w by remember { mutableFloatStateOf(1f) }
     var h by remember { mutableFloatStateOf(1f) }
@@ -380,7 +361,8 @@ fun PlayScreen(onExit: () -> Unit) {
                 val ds = shipPxSize * 1.35f
                 drawImg(d, shipPx - ds / 2f, shipPy - ds / 2f, ds, ds)
             } else if (iFrames == 0 || (tick / 3) % 2 == 0) {
-                drawImg(shipImg, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
+                val ship = if (multishot > 0) shipTriple else shipSingle
+                drawImg(ship, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
             }
 
             if (muzzleFlash > 0 && !gameOver) {
@@ -437,8 +419,10 @@ fun PlayScreen(onExit: () -> Unit) {
                     center = Offset(p.x, p.y),
                     style = Stroke(width = 1.5f)
                 )
-                val img = when (p.type) { 0 -> puMulti; 1 -> puShield; else -> puSpeed }
-                drawImg(img, p.x - 36f, p.y - 36f, 72f, 72f)
+                val img = when (p.type) { 0 -> puWeapon; 1 -> puHeal; else -> puSpeed }
+                // Mode icons are 64px; speed keeps soft powerup art
+                val icon = if (p.type == 2) 72f else 56f
+                drawImg(img, p.x - icon / 2f, p.y - icon / 2f, icon, icon)
             }
             fx.forEach { f ->
                 val img = when (f.kind) { 0 -> boom1; 1 -> boom2; else -> boom3 }
