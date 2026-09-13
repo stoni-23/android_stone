@@ -22,10 +22,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.imageResource
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -33,8 +33,12 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import com.stoni.androidstone.R
 import kotlinx.coroutines.delay
+import android.graphics.BitmapFactory
 import kotlin.math.abs
 import kotlin.random.Random
+
+private fun loadImg(context: Context, id: Int): ImageBitmap =
+    BitmapFactory.decodeResource(context.resources, id).asImageBitmap()
 
 private data class Bullet(var x: Float, var y: Float, val dy: Float, val fromPlayer: Boolean)
 private data class Enemy(var x: Float, var y: Float, var hp: Int = 1)
@@ -46,15 +50,15 @@ fun PlayScreen(onExit: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("stargame", Context.MODE_PRIVATE) }
     var high by remember { mutableIntStateOf(prefs.getInt("highscore", 0)) }
 
-    val shipImg = imageResource(R.drawable.player_glocke_96)
-    val enemyImg = imageResource(R.drawable.enemy_stoerer_64)
-    val bulletImg = imageResource(R.drawable.bullet_player)
-    val starFar = imageResource(R.drawable.bg_stars_far)
-    val starNear = imageResource(R.drawable.bg_stars_near)
-    val heartImg = imageResource(R.drawable.ui_heart)
-    val puMulti = imageResource(R.drawable.powerup_multishot_48)
-    val puShield = imageResource(R.drawable.powerup_shield_48)
-    val puSpeed = imageResource(R.drawable.powerup_speed_48)
+    val shipImg = remember { loadImg(context, R.drawable.player_glocke_96) }
+    val enemyImg = remember { loadImg(context, R.drawable.enemy_stoerer_64) }
+    val bulletImg = remember { loadImg(context, R.drawable.bullet_player) }
+    val starFar = remember { loadImg(context, R.drawable.bg_stars_far) }
+    val starNear = remember { loadImg(context, R.drawable.bg_stars_near) }
+    val heartImg = remember { loadImg(context, R.drawable.ui_heart) }
+    val puMulti = remember { loadImg(context, R.drawable.powerup_multishot_48) }
+    val puShield = remember { loadImg(context, R.drawable.powerup_shield_48) }
+    val puSpeed = remember { loadImg(context, R.drawable.powerup_speed_48) }
 
     var w by remember { mutableFloatStateOf(1f) }
     var h by remember { mutableFloatStateOf(1f) }
