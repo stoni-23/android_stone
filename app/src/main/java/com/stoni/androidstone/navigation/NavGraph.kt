@@ -14,21 +14,17 @@ object Routes {
 
 @Composable
 fun AppNavHost() {
-    val navController = rememberNavController()
-
-    NavHost(
-        navController = navController,
-        startDestination = Routes.START
-    ) {
+    val nav = rememberNavController()
+    NavHost(navController = nav, startDestination = Routes.START) {
         composable(Routes.START) {
-            StartScreen(
-                onPlayClick = { navController.navigate(Routes.PLAY) }
-            )
+            StartScreen(onStart = { nav.navigate(Routes.PLAY) { popUpTo(Routes.START) { inclusive = true } } })
         }
         composable(Routes.PLAY) {
-            PlayScreen(
-                onBackClick = { navController.popBackStack() }
-            )
+            PlayScreen(onExit = {
+                nav.navigate(Routes.START) {
+                    popUpTo(Routes.PLAY) { inclusive = true }
+                }
+            })
         }
     }
 }
