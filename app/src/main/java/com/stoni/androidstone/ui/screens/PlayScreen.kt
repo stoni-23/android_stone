@@ -82,7 +82,7 @@ fun PlayScreen(onExit: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("stargame", Context.MODE_PRIVATE) }
     var high by remember { mutableIntStateOf(prefs.getInt("highscore", 0)) }
 
-    val shipImg = remember { loadAsset(context, "player_glocke_192.png") }
+    val shipImg = remember { loadAsset(context, "player_glocke_160.png") }
     val enemyImg = remember { loadAsset(context, "enemy_stoerer_64.png") }
     val enemyImgB = remember { loadAsset(context, "enemy_stoerer_b_64.png") }
     val enemyBig = remember { loadAsset(context, "enemy_stoerer_big_128.png") }
