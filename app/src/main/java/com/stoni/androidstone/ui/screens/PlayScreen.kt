@@ -61,6 +61,9 @@ fun PlayScreen(onExit: () -> Unit) {
     val puMulti = remember { loadImg(context, R.drawable.powerup_multishot_48) }
     val puShield = remember { loadImg(context, R.drawable.powerup_shield_48) }
     val puSpeed = remember { loadImg(context, R.drawable.powerup_speed_48) }
+    val steam1 = remember { loadImg(context, R.drawable.fx_steam_1) }
+    val steam2 = remember { loadImg(context, R.drawable.fx_steam_2) }
+    val enemyImgB = remember { loadImg(context, R.drawable.enemy_stoerer_b_64) }
 
     var w by remember { mutableFloatStateOf(1f) }
     var h by remember { mutableFloatStateOf(1f) }
@@ -230,11 +233,13 @@ fun PlayScreen(onExit: () -> Unit) {
 
             val shipPx = shipX * w
             val shipPy = h * 0.88f
+            val steam = if ((tick / 8) % 2 == 0) steam1 else steam2
+            drawImg(steam, shipPx - 28f, shipPy - 10f, 56f, 56f)
             drawImg(shipImg, shipPx - 48f, shipPy - 48f, 96f, 96f)
             if (shield > 0) {
                 drawCircle(Color(0x664FC3F7), 56f, Offset(shipPx, shipPy))
             }
-            enemies.forEach { drawImg(enemyImg, it.x - 32f, it.y - 32f, 64f, 64f) }
+            enemies.forEachIndexed { i, e -> drawImg(if ((tick / 10 + i) % 2 == 0) enemyImg else enemyImgB, e.x - 32f, e.y - 32f, 64f, 64f) }
             bullets.filter { it.fromPlayer }.forEach {
                 drawImg(bulletImg, it.x - 8f, it.y - 16f, 16f, 32f)
             }
