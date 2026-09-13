@@ -22,8 +22,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            isCrunchPngs = false
+        }
         release {
             isMinifyEnabled = false
+            isCrunchPngs = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

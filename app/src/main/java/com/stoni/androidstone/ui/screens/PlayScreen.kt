@@ -42,8 +42,17 @@ private fun loadImg(context: Context, id: Int): ImageBitmap {
     val opts = BitmapFactory.Options().apply {
         inPreferredConfig = Bitmap.Config.ARGB_8888
         inScaled = false
+        inDensity = 0
+        inTargetDensity = 0
     }
-    return BitmapFactory.decodeResource(context.resources, id, opts).asImageBitmap()
+    val bmp = BitmapFactory.decodeResource(context.resources, id, opts)
+        ?: error("missing drawable $id")
+    val argb = if (bmp.config != Bitmap.Config.ARGB_8888 || !bmp.hasAlpha()) {
+        bmp.copy(Bitmap.Config.ARGB_8888, /* isMutable = */ false).also {
+            if (bmp !== it) bmp.recycle()
+        }
+    } else bmp
+    return argb.asImageBitmap()
 }
 
 private data class Bullet(
@@ -72,7 +81,7 @@ fun PlayScreen(onExit: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("stargame", Context.MODE_PRIVATE) }
     var high by remember { mutableIntStateOf(prefs.getInt("highscore", 0)) }
 
-    val shipImg = remember { loadImg(context, R.drawable.player_glocke_160) }
+    val shipImg = remember { loadImg(context, R.drawable.player_glocke_192) }
     val enemyImg = remember { loadImg(context, R.drawable.enemy_stoerer_64) }
     val enemyImgB = remember { loadImg(context, R.drawable.enemy_stoerer_b_64) }
     val enemyBig = remember { loadImg(context, R.drawable.enemy_stoerer_big_128) }
@@ -318,7 +327,7 @@ fun PlayScreen(onExit: () -> Unit) {
             val steam = if ((tick / 10) % 2 == 0) steam1 else steam2
             drawImg(steam, shipPx - 36f, shipPy - 8f, 72f, 72f)
             // no background behind sprite — alpha only
-            drawImg(shipImg, shipPx - 80f, shipPy - 80f, 160f, 160f)
+            drawImg(shipImg, shipPx - 110f, shipPy - 110f, 220f, 220f)
             if (muzzleFlash > 0) {
                 val m = if (muzzleFlash > 2) muzzle1 else muzzle2
                 drawImg(m, shipPx - 24f, shipPy - 110f, 48f, 48f)
@@ -329,10 +338,10 @@ fun PlayScreen(onExit: () -> Unit) {
 
             enemies.forEachIndexed { i, e ->
                 if (e.big) {
-                    drawImg(enemyBig, e.x - 64f, e.y - 64f, 128f, 128f)
+                    drawImg(enemyBig, e.x - 72f, e.y - 72f, 144f, 144f)
                 } else {
                     val img = if ((tick / 12 + i) % 2 == 0) enemyImg else enemyImgB
-                    drawImg(img, e.x - 40f, e.y - 40f, 80f, 80f)
+                    drawImg(img, e.x - 48f, e.y - 48f, 96f, 96f)
                 }
             }
             bullets.forEach { b ->
@@ -402,6 +411,7 @@ private fun DrawScope.drawImg(img: ImageBitmap, x: Float, y: Float, dw: Float, d
         image = img,
         dstOffset = IntOffset(x.toInt(), y.toInt()),
         dstSize = IntSize(dw.toInt().coerceAtLeast(1), dh.toInt().coerceAtLeast(1)),
-        filterQuality = FilterQuality.None
+        filterQuality = FilterQuality.None,
+        blendMode = androidx.compose.ui.graphics.BlendMode.SrcOver
     )
 }
