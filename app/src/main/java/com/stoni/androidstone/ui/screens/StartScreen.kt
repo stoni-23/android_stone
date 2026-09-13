@@ -1,17 +1,10 @@
 package com.stoni.androidstone.ui.screens
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,7 +22,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -37,18 +29,21 @@ import androidx.compose.ui.unit.sp
 import com.stoni.androidstone.game.loadStargameAsset
 import kotlinx.coroutines.delay
 
-private data class IntroBeat(val speaker: String, val line: String)
-
-/** Klugscheißer dialogs as TEXT OVERLAY — Daniel exact on beat 1. */
-private val introBeats = listOf(
-    IntroBeat("MAJOR", "Holen Sie die Karte, Pimpelhuber — die Karte des Sieges."),
-    IntroBeat("PIMPELHUBER", "Zu Befehl, Herr Major!"),
-    IntroBeat("MAJOR", "Du fliegst in die Reichszeitglocke. Allein."),
-    IntroBeat("PIMPELHUBER", "In… die Glocke, Herr Major?"),
-    IntroBeat("MAJOR", "Rein. Luke zu. Und bring den Orbit zur Ruhe."),
-    IntroBeat("LUKE", "Luke zu. Start.")
+/**
+ * Klugscheißer lines (Daniel exact on beat 1) — kept for nobubble+overlay fallback only.
+ * Current build uses intro_panel_1..6 WITH baked-in bubbles; do not draw these on screen.
+ */
+@Suppress("unused")
+private val introBeatsFallback = listOf(
+    "Holen Sie die Karte, Pimpelhuber — die Karte des Sieges.",
+    "Zu Befehl, Herr Major!",
+    "Du fliegst in die Reichszeitglocke. Allein.",
+    "In… die Glocke, Herr Major?",
+    "Rein. Luke zu. Und bring den Orbit zur Ruhe.",
+    "Luke zu. Start."
 )
 
+private const val INTRO_PANEL_COUNT = 6
 
 @Composable
 fun StartScreen(onStart: () -> Unit) {
@@ -73,6 +68,7 @@ fun StartScreen(onStart: () -> Unit) {
             loadStargameAsset(context, "menu_logo_4.png")
         )
     }
+    // Panels WITH baked-in bubbles (prefer over nobubble + Compose text)
     val introPanels = remember {
         listOf(
             loadStargameAsset(context, "intro_panel_1.png"),
@@ -94,8 +90,7 @@ fun StartScreen(onStart: () -> Unit) {
     }
 
     val inMenu = phase == 0
-    val beat = introBeats[introStep.coerceIn(0, introBeats.lastIndex)]
-    val lastIntro = introStep >= introBeats.lastIndex
+    val lastIntro = introStep >= INTRO_PANEL_COUNT - 1
 
     Box(
         modifier = Modifier
@@ -104,7 +99,7 @@ fun StartScreen(onStart: () -> Unit) {
                 if (inMenu) {
                     phase = 1
                     introStep = 0
-                } else if (introStep < introBeats.lastIndex) {
+                } else if (introStep < INTRO_PANEL_COUNT - 1) {
                     introStep++
                 } else {
                     onStart()
@@ -119,7 +114,6 @@ fun StartScreen(onStart: () -> Unit) {
                 val bg = menuBgs[menuFrame % menuBgs.size]
                 drawMenuImg(bg, 0f, 0f, w, h)
                 val logo = menuLogos[menuFrame % menuLogos.size]
-                // Logo centered upper third, preserve aspect roughly
                 val lw = w * 0.82f
                 val lh = lw * (logo.height.toFloat() / logo.width.toFloat().coerceAtLeast(1f))
                 val lx = (w - lw) / 2f
@@ -131,65 +125,30 @@ fun StartScreen(onStart: () -> Unit) {
             }
         }
 
+        // Menu cue only — intro uses baked-in bubbles (no Compose dialogue overlay)
         if (inMenu) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Text(
+                "► TIPPEN ZUM INTRO",
+                color = Color(0xFFC9A66B),
+                fontSize = 14.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 48.dp)
-            ) {
-                Text(
-                    "► TIPPEN ZUM INTRO",
-                    color = Color(0xFFC9A66B),
-                    fontSize = 14.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.sp
-                )
-            }
+            )
         } else {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
+            Text(
+                if (lastIntro) "► TIPPEN ZUM START" else "Tippen …",
+                color = if (lastIntro) Color(0xFFC9A66B) else Color(0xFF8A8680),
+                fontSize = 12.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = if (lastIntro) FontWeight.Bold else FontWeight.Normal,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(horizontal = 20.dp, vertical = 28.dp)
-                    .fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0xCC12121C), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFFC9A66B).copy(alpha = 0.45f), RoundedCornerShape(8.dp))
-                        .padding(16.dp)
-                ) {
-                    if (beat.speaker.isNotEmpty()) {
-                        Text(
-                            beat.speaker,
-                            color = Color(0xFF69F0AE),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            letterSpacing = 1.sp
-                        )
-                        Spacer(Modifier.height(6.dp))
-                    }
-                    Text(
-                        text = beat.line,
-                        color = Color(0xFFF2E6D0),
-                        fontSize = 16.sp,
-                        textAlign = TextAlign.Start,
-                        lineHeight = 22.sp
-                    )
-                }
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    if (lastIntro) "► TIPPEN ZUM START" else "Tippen …",
-                    color = if (lastIntro) Color(0xFFC9A66B) else Color(0xFF8A8680),
-                    fontSize = 13.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = if (lastIntro) FontWeight.Bold else FontWeight.Normal
-                )
-            }
+                    .padding(bottom = 20.dp)
+            )
         }
     }
 }
