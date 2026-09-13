@@ -74,7 +74,7 @@ private data class Fx(var x: Float, var y: Float, var life: Int, val kind: Int)
 fun PlayScreen(onExit: () -> Unit) {
     val context = LocalContext.current
     val density = LocalDensity.current
-    val shipPxSize = with(density) { 112.dp.toPx() }
+    val shipPxSize = with(density) { 68.dp.toPx() }
     val enemyPxSize = with(density) { 72.dp.toPx() }
     val bigPxSize = with(density) { 110.dp.toPx() }
     val bulletW = with(density) { 18.dp.toPx() }
@@ -82,7 +82,7 @@ fun PlayScreen(onExit: () -> Unit) {
     val prefs = remember { context.getSharedPreferences("stargame", Context.MODE_PRIVATE) }
     var high by remember { mutableIntStateOf(prefs.getInt("highscore", 0)) }
 
-    val shipImg = remember { loadAsset(context, "player_glocke_112.png") }
+    val shipImg = remember { loadAsset(context, "player_glocke_96.png") }
     val enemyImg = remember { loadAsset(context, "enemy_stoerer_64.png") }
     val enemyImgB = remember { loadAsset(context, "enemy_stoerer_b_64.png") }
     val enemyBig = remember { loadAsset(context, "enemy_stoerer_big_128.png") }
