@@ -249,10 +249,10 @@ fun PlayScreen(onExit: () -> Unit) {
             bgOffsetY -= shipVy * 0.25f
 
             val halfShip = shipPxSize / 2f
-            if (shipPx < halfShip) { shipPx = halfShip; shipVx = -shipVx * 0.4f }
-            if (shipPx > sw - halfShip) { shipPx = sw - halfShip; shipVx = -shipVx * 0.4f }
-            if (shipPy < halfShip) { shipPy = halfShip; shipVy = -shipVy * 0.4f }
-            if (shipPy > sh - halfShip) { shipPy = sh - halfShip; shipVy = -shipVy * 0.4f }
+            if (shipPx < -halfShip) shipPx = sw + halfShip
+            else if (shipPx > sw + halfShip) shipPx = -halfShip
+            if (shipPy < -halfShip) shipPy = sh + halfShip
+            else if (shipPy > sh + halfShip) shipPy = -halfShip
 
             if (isTouching) {
                 if (fireCd > 0) {
