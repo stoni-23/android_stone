@@ -39,6 +39,58 @@ import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
 
+private enum class EnemyKind { BASIC, LANG, RUND, BIG }
+
+private data class Bullet(
+    var x: Float,
+    var y: Float,
+    val vx: Float,
+    val vy: Float,
+    val angle: Float,
+    val fromPlayer: Boolean,
+    val triple: Boolean = false
+)
+
+private data class Enemy(
+    var x: Float,
+    var y: Float,
+    var hp: Int = 1,
+    var fireCd: Int = 60,
+    val kind: EnemyKind = EnemyKind.BASIC,
+    var angle: Float = 0f
+)
+
+private data class PowerUp(var x: Float, var y: Float, val type: Int)
+private data class Fx(var x: Float, var y: Float, var life: Int, val kind: Int)
+
+private class GameSfx(context: Context) {
+    private val pool: SoundPool
+    private val shootId: Int
+    private val hitId: Int
+    private val pickupId: Int
+
+    init {
+        val attrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .build()
+        pool = SoundPool.Builder().setMaxStreams(6).setAudioAttributes(attrs).build()
+        shootId = pool.load(context, R.raw.shoot, 1)
+        hitId = pool.load(context, R.raw.hit, 1)
+        pickupId = pool.load(context, R.raw.pickup, 1)
+    }
+
+    fun shoot() = play(shootId, 0.55f)
+    fun hit() = play(hitId, 0.7f)
+    fun pickup() = play(pickupId, 0.65f)
+
+    private fun play(id: Int, vol: Float) {
+        if (id != 0) pool.play(id, vol, vol, 1, 0, 1f)
+    }
+
+    fun release() { pool.release() }
+}
+
 @Composable
 fun PlayScreen(onExit: () -> Unit) {
     val context = LocalContext.current
