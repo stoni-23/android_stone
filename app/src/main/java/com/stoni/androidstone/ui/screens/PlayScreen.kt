@@ -4,13 +4,10 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -27,7 +24,6 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -258,34 +254,28 @@ fun PlayScreen(onExit: () -> Unit) {
             if (shipPy < halfShip) { shipPy = halfShip; shipVy = -shipVy * 0.4f }
             if (shipPy > sh - halfShip) { shipPy = sh - halfShip; shipVy = -shipVy * 0.4f }
 
-            if (isTouching) {
-                if (fireCd > 0) {
-                    fireCd--
+            if (fireCd > 0) fireCd-- else {
+                fireCd = if (multishot > 0) 8 else 13
+                muzzleFlash = 3
+                sfx.shoot()
+                val bSpeed = if (speedBoost > 0) 24f else 20f
+                val shootRad = (shipAngle - 90f) * PI / 180.0
+                val bvx = (cos(shootRad) * bSpeed).toFloat()
+                val bvy = (sin(shootRad) * bSpeed).toFloat()
+
+                val noseDist = shipPxSize * 0.44f
+                val mx = shipPx + (cos(shootRad) * noseDist).toFloat()
+                val my = shipPy + (sin(shootRad) * noseDist).toFloat()
+
+                if (multishot > 0) {
+                    val sp1 = (shipAngle - 90f - 12f) * PI / 180.0
+                    val sp2 = (shipAngle - 90f + 12f) * PI / 180.0
+                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true, true)
+                    bullets += Bullet(mx, my, (cos(sp1) * bSpeed).toFloat(), (sin(sp1) * bSpeed).toFloat(), shipAngle - 12f, true, true)
+                    bullets += Bullet(mx, my, (cos(sp2) * bSpeed).toFloat(), (sin(sp2) * bSpeed).toFloat(), shipAngle + 12f, true, true)
                 } else {
-                    fireCd = if (multishot > 0) 8 else 13
-                    muzzleFlash = 3
-                    sfx.shoot()
-                    val bSpeed = if (speedBoost > 0) 24f else 20f
-                    val shootRad = (shipAngle - 90f) * PI / 180.0
-                    val bvx = (cos(shootRad) * bSpeed).toFloat()
-                    val bvy = (sin(shootRad) * bSpeed).toFloat()
-
-                    val noseDist = shipPxSize * 0.44f
-                    val mx = shipPx + (cos(shootRad) * noseDist).toFloat()
-                    val my = shipPy + (sin(shootRad) * noseDist).toFloat()
-
-                    if (multishot > 0) {
-                        val sp1 = (shipAngle - 90f - 12f) * PI / 180.0
-                        val sp2 = (shipAngle - 90f + 12f) * PI / 180.0
-                        bullets += Bullet(mx, my, bvx, bvy, shipAngle, true, true)
-                        bullets += Bullet(mx, my, (cos(sp1) * bSpeed).toFloat(), (sin(sp1) * bSpeed).toFloat(), shipAngle - 12f, true, true)
-                        bullets += Bullet(mx, my, (cos(sp2) * bSpeed).toFloat(), (sin(sp2) * bSpeed).toFloat(), shipAngle + 12f, true, true)
-                    } else {
-                        bullets += Bullet(mx, my, bvx, bvy, shipAngle, true)
-                    }
+                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true)
                 }
-            } else {
-                if (fireCd > 0) fireCd--
             }
 
             if (multishot > 0) multishot--
@@ -357,7 +347,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
                 if (e.fireCd > 0) e.fireCd-- else {
                     e.fireCd = when (e.kind) {
-                        EnemyKind.LANG -> 90 - wave * 4
+                        EnemyKind.LANG -> 65 - wave * 5
                         EnemyKind.RUND -> 75 - wave * 5
                         else -> 80 - wave * 6
                     }
@@ -615,75 +605,8 @@ fun PlayScreen(onExit: () -> Unit) {
             Text("Pause", color = Color.White, fontSize = 18.sp, modifier = Modifier.align(Alignment.Center))
         }
         if (gameOver || won) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color(0xD9050512)),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth(0.85f)
-                        .background(Color(0xFF141422), shape = RoundedCornerShape(16.dp))
-                        .border(1.5.dp, if (won) Color(0xFF69F0AE) else Color(0xFFFF5252), RoundedCornerShape(16.dp))
-                        .padding(24.dp)
-                ) {
-                    Text(
-                        text = if (won) "ORBIT GESICHERT!" else "MISSION GESCHEITERT",
-                        color = if (won) Color(0xFF69F0AE) else Color(0xFFFF5252),
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Black
-                    )
-
-                    Spacer(Modifier.height(16.dp))
-
-                    Text("ERZIELTE PUNKTE", color = Color.Gray, fontSize = 11.sp)
-                    Text(
-                        "$score",
-                        color = Color(0xFFF2E6D0),
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceAround
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterVertically) {
-                            Text("HIGHSCORE", color = Color.Gray, fontSize = 11.sp)
-                            Text("$high", color = Color(0xFFC9A66B), fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-                        Column(horizontalAlignment = Alignment.CenterVertically) {
-                            Text("WELLE", color = Color.Gray, fontSize = 11.sp)
-                            Text("$wave", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-                    }
-
-                    Spacer(Modifier.height(24.dp))
-
-                    Button(
-                        onClick = { restartGame() },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC9A66B))
-                    ) {
-                        Text("NOCHMAL SPIELEN", color = Color.Black, fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Button(
-                        onClick = onExit,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF262638))
-                    ) {
-                        Text("ZUM HAUPTMENÜ", color = Color.White)
-                    }
-                }
+            TextButton(onClick = onExit, modifier = Modifier.align(Alignment.BottomCenter).padding(32.dp)) {
+                Text(if (won) "Menü" else "Nochmal / Menü", color = Color.White, fontSize = 16.sp)
             }
         }
     }
