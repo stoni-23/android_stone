@@ -353,13 +353,13 @@ fun PlayScreen(onExit: () -> Unit) {
 
                 if (e.fireCd > 0) e.fireCd-- else {
                     e.fireCd = when (e.kind) {
-                        EnemyKind.LANG -> 65 - wave * 5
+                        EnemyKind.LANG -> 90 - wave * 4
                         EnemyKind.RUND -> 75 - wave * 5
                         else -> 80 - wave * 6
                     }
 
                     if (dist > 15f) {
-                        val ebSpeed = 5.2f + wave * 0.3f
+                        val ebSpeed = 11.5f + wave * 0.5f
                         val ebvx = (edx / dist) * ebSpeed
                         val ebvy = (edy / dist) * ebSpeed
 
@@ -611,8 +611,75 @@ fun PlayScreen(onExit: () -> Unit) {
             Text("Pause", color = Color.White, fontSize = 18.sp, modifier = Modifier.align(Alignment.Center))
         }
         if (gameOver || won) {
-            TextButton(onClick = onExit, modifier = Modifier.align(Alignment.BottomCenter).padding(32.dp)) {
-                Text(if (won) "Menü" else "Nochmal / Menü", color = Color.White, fontSize = 16.sp)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xD9050512)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth(0.85f)
+                        .background(Color(0xFF141422), shape = RoundedCornerShape(16.dp))
+                        .border(1.5.dp, if (won) Color(0xFF69F0AE) else Color(0xFFFF5252), RoundedCornerShape(16.dp))
+                        .padding(24.dp)
+                ) {
+                    Text(
+                        text = if (won) "ORBIT GESICHERT!" else "MISSION GESCHEITERT",
+                        color = if (won) Color(0xFF69F0AE) else Color(0xFFFF5252),
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black
+                    )
+
+                    Spacer(Modifier.height(16.dp))
+
+                    Text("ERZIELTE PUNKTE", color = Color.Gray, fontSize = 11.sp)
+                    Text(
+                        "$score",
+                        color = Color(0xFFF2E6D0),
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceAround
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterVertically) {
+                            Text("HIGHSCORE", color = Color.Gray, fontSize = 11.sp)
+                            Text("$high", color = Color(0xFFC9A66B), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterVertically) {
+                            Text("WELLE", color = Color.Gray, fontSize = 11.sp)
+                            Text("$wave", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                    }
+
+                    Spacer(Modifier.height(24.dp))
+
+                    Button(
+                        onClick = { restartGame() },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC9A66B))
+                    ) {
+                        Text("NOCHMAL SPIELEN", color = Color.Black, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Button(
+                        onClick = onExit,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF262638))
+                    ) {
+                        Text("ZUM HAUPTMENÜ", color = Color.White)
+                    }
+                }
             }
         }
     }
