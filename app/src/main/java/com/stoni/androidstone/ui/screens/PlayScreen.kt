@@ -297,15 +297,10 @@ fun PlayScreen(onExit: () -> Unit) {
             val maxSpawn = when (wave) { 1 -> 7; 2 -> 11; else -> 16 }
             if (spawnCd > 0) spawnCd-- else if (spawned < maxSpawn) {
                 spawnCd = 60 - wave * 4
-                val edge = Random.nextInt(4)
-                var ex = 0f
-                var ey = 0f
-                when (edge) {
-                    0 -> { ex = Random.nextFloat() * sw; ey = -70f }
-                    1 -> { ex = sw + 70f; ey = Random.nextFloat() * sh }
-                    2 -> { ex = Random.nextFloat() * sw; ey = sh + 70f }
-                    else -> { ex = -70f; ey = Random.nextFloat() * sh }
-                }
+                val spawnAngle = Random.nextFloat() * 2f * PI
+                val spawnDist = max(sw, sh) * 0.75f + 80f
+                val ex = camX + (cos(spawnAngle) * spawnDist).toFloat()
+                val ey = camY + (sin(spawnAngle) * spawnDist).toFloat()
 
                 val roll = Random.nextFloat()
                 val kind = when {
@@ -515,18 +510,18 @@ fun PlayScreen(onExit: () -> Unit) {
                     when (e.kind) {
                         EnemyKind.LANG -> {
                             val img = if (isLichtFrame) schiffLangLicht else schiffLang
-                            drawImg(img, e.x - enemyLangW / 2f, e.y - enemyLangH / 2f, enemyLangW, enemyLangH)
+                            drawImg(img, toSx(e.x) - enemyLangW / 2f, toSy(e.y) - enemyLangH / 2f, enemyLangW, enemyLangH)
                         }
                         EnemyKind.RUND -> {
                             val img = if (isLichtFrame) schiffRundLicht else schiffRund
-                            drawImg(img, e.x - enemyRundSize / 2f, e.y - enemyRundSize / 2f, enemyRundSize, enemyRundSize)
+                            drawImg(img, toSx(e.x) - enemyRundSize / 2f, toSy(e.y) - enemyRundSize / 2f, enemyRundSize, enemyRundSize)
                         }
                         EnemyKind.BIG -> {
-                            drawImg(enemyBig, e.x - bigPxSize / 2f, e.y - bigPxSize / 2f, bigPxSize, bigPxSize)
+                            drawImg(enemyBig, toSx(e.x) - bigPxSize / 2f, toSy(e.y) - bigPxSize / 2f, bigPxSize, bigPxSize)
                         }
                         EnemyKind.BASIC -> {
                             val img = if ((tick / 12 + i) % 2 == 0) enemyImg else enemyImgB
-                            drawImg(img, e.x - enemyPxSize / 2f, e.y - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
+                            drawImg(img, toSx(e.x) - enemyPxSize / 2f, toSy(e.y) - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
                         }
                     }
                 }
@@ -536,7 +531,7 @@ fun PlayScreen(onExit: () -> Unit) {
                 rotate(degrees = b.angle, pivot = Offset(toSx(b.x), toSy(b.y))) {
                     if (b.fromPlayer) {
                         val img = if (b.triple) bulletTriple else bulletImg
-                        drawImg(img, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH)
+                        drawImg(img, toSx(b.x) - bulletW / 2f, toSy(b.y) - bulletH / 2f, bulletW, bulletH)
                     } else {
                         drawImg(bulletEnemy, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH * 0.85f)
                     }
