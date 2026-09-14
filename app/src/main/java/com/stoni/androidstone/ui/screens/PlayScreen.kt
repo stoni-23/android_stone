@@ -4,22 +4,15 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
-import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-
 import androidx.compose.material3.Text
-import androidx.compose.foundation.border
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-Button
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +27,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -44,58 +38,6 @@ import com.stoni.androidstone.game.loadStargameAsset
 import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
-
-private enum class EnemyKind { BASIC, LANG, RUND, BIG }
-
-private data class Bullet(
-    var x: Float,
-    var y: Float,
-    val vx: Float,
-    val vy: Float,
-    val angle: Float,
-    val fromPlayer: Boolean,
-    val triple: Boolean = false
-)
-
-private data class Enemy(
-    var x: Float,
-    var y: Float,
-    var hp: Int = 1,
-    var fireCd: Int = 60,
-    val kind: EnemyKind = EnemyKind.BASIC,
-    var angle: Float = 0f
-)
-
-private data class PowerUp(var x: Float, var y: Float, val type: Int)
-private data class Fx(var x: Float, var y: Float, var life: Int, val kind: Int)
-
-private class GameSfx(context: Context) {
-    private val pool: SoundPool
-    private val shootId: Int
-    private val hitId: Int
-    private val pickupId: Int
-
-    init {
-        val attrs = AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_GAME)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        pool = SoundPool.Builder().setMaxStreams(6).setAudioAttributes(attrs).build()
-        shootId = pool.load(context, R.raw.shoot, 1)
-        hitId = pool.load(context, R.raw.hit, 1)
-        pickupId = pool.load(context, R.raw.pickup, 1)
-    }
-
-    fun shoot() = play(shootId, 0.55f)
-    fun hit() = play(hitId, 0.7f)
-    fun pickup() = play(pickupId, 0.65f)
-
-    private fun play(id: Int, vol: Float) {
-        if (id != 0) pool.play(id, vol, vol, 1, 0, 1f)
-    }
-
-    fun release() { pool.release() }
-}
 
 @Composable
 fun PlayScreen(onExit: () -> Unit) {
