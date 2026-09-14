@@ -254,7 +254,7 @@ fun PlayScreen(onExit: () -> Unit) {
             if (shipPy < halfShip) { shipPy = halfShip; shipVy = -shipVy * 0.4f }
             if (shipPy > sh - halfShip) { shipPy = sh - halfShip; shipVy = -shipVy * 0.4f }
 
-            if (fireCd > 0) fireCd-- else {
+            if (isTouching) { if (fireCd > 0) fireCd-- else {
                 fireCd = if (multishot > 0) 8 else 13
                 muzzleFlash = 3
                 sfx.shoot()
@@ -274,7 +274,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     bullets += Bullet(mx, my, (cos(sp1) * bSpeed).toFloat(), (sin(sp1) * bSpeed).toFloat(), shipAngle - 12f, true, true)
                     bullets += Bullet(mx, my, (cos(sp2) * bSpeed).toFloat(), (sin(sp2) * bSpeed).toFloat(), shipAngle + 12f, true, true)
                 } else {
-                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true)
+                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true) } } else { if (fireCd > 0) fireCd--
                 }
             }
 
