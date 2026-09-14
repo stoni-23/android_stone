@@ -347,9 +347,9 @@ fun PlayScreen(onExit: () -> Unit) {
 
                 if (e.fireCd > 0) e.fireCd-- else {
                     e.fireCd = when (e.kind) {
-                        EnemyKind.LANG -> 65 - wave * 5
-                        EnemyKind.RUND -> 75 - wave * 5
-                        else -> 80 - wave * 6
+                        EnemyKind.LANG -> 90 - wave * 4
+                        EnemyKind.RUND -> 105 - wave * 4
+                        else -> 115 - wave * 5
                     }
 
                     if (dist > 15f) {
