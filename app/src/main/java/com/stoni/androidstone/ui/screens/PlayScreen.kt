@@ -254,28 +254,34 @@ fun PlayScreen(onExit: () -> Unit) {
             if (shipPy < halfShip) { shipPy = halfShip; shipVy = -shipVy * 0.4f }
             if (shipPy > sh - halfShip) { shipPy = sh - halfShip; shipVy = -shipVy * 0.4f }
 
-            if (isTouching) { if (fireCd > 0) fireCd-- else {
-                fireCd = if (multishot > 0) 8 else 13
-                muzzleFlash = 3
-                sfx.shoot()
-                val bSpeed = if (speedBoost > 0) 24f else 20f
-                val shootRad = (shipAngle - 90f) * PI / 180.0
-                val bvx = (cos(shootRad) * bSpeed).toFloat()
-                val bvy = (sin(shootRad) * bSpeed).toFloat()
-
-                val noseDist = shipPxSize * 0.44f
-                val mx = shipPx + (cos(shootRad) * noseDist).toFloat()
-                val my = shipPy + (sin(shootRad) * noseDist).toFloat()
-
-                if (multishot > 0) {
-                    val sp1 = (shipAngle - 90f - 12f) * PI / 180.0
-                    val sp2 = (shipAngle - 90f + 12f) * PI / 180.0
-                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true, true)
-                    bullets += Bullet(mx, my, (cos(sp1) * bSpeed).toFloat(), (sin(sp1) * bSpeed).toFloat(), shipAngle - 12f, true, true)
-                    bullets += Bullet(mx, my, (cos(sp2) * bSpeed).toFloat(), (sin(sp2) * bSpeed).toFloat(), shipAngle + 12f, true, true)
+            if (isTouching) {
+                if (fireCd > 0) {
+                    fireCd--
                 } else {
-                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true) } } else { if (fireCd > 0) fireCd--
+                    fireCd = if (multishot > 0) 8 else 13
+                    muzzleFlash = 3
+                    sfx.shoot()
+                    val bSpeed = if (speedBoost > 0) 24f else 20f
+                    val shootRad = (shipAngle - 90f) * PI / 180.0
+                    val bvx = (cos(shootRad) * bSpeed).toFloat()
+                    val bvy = (sin(shootRad) * bSpeed).toFloat()
+
+                    val noseDist = shipPxSize * 0.44f
+                    val mx = shipPx + (cos(shootRad) * noseDist).toFloat()
+                    val my = shipPy + (sin(shootRad) * noseDist).toFloat()
+
+                    if (multishot > 0) {
+                        val sp1 = (shipAngle - 90f - 12f) * PI / 180.0
+                        val sp2 = (shipAngle - 90f + 12f) * PI / 180.0
+                        bullets += Bullet(mx, my, bvx, bvy, shipAngle, true, true)
+                        bullets += Bullet(mx, my, (cos(sp1) * bSpeed).toFloat(), (sin(sp1) * bSpeed).toFloat(), shipAngle - 12f, true, true)
+                        bullets += Bullet(mx, my, (cos(sp2) * bSpeed).toFloat(), (sin(sp2) * bSpeed).toFloat(), shipAngle + 12f, true, true)
+                    } else {
+                        bullets += Bullet(mx, my, bvx, bvy, shipAngle, true)
+                    }
                 }
+            } else {
+                if (fireCd > 0) fireCd--
             }
 
             if (multishot > 0) multishot--
