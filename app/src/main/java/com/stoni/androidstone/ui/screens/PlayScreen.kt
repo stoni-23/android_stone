@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -148,8 +149,8 @@ fun PlayScreen(onExit: () -> Unit) {
     var fingerX by remember { mutableFloatStateOf(540f) }
     var fingerY by remember { mutableFloatStateOf(700f) }
     var isTouching by remember { mutableStateOf(false) }
-    var camX by remember { mutableFloatStateOf(540f) }
-    var camY by remember { mutableFloatStateOf(960f) }
+    var camX by remember { mutableFloatStateOf(0f) }
+    var camY by remember { mutableFloatStateOf(0f) }
 
     var score by remember { mutableIntStateOf(0) }
     var lives by remember { mutableIntStateOf(4) }
@@ -217,10 +218,8 @@ fun PlayScreen(onExit: () -> Unit) {
             if (muzzleFlash > 0) muzzleFlash--
 
             if (isTouching) {
-                val shipSx = shipPx - camX + sw / 2f
-                val shipSy = shipPy - camY + sh / 2f
-                val dx = fingerX - shipSx
-                val dy = fingerY - shipSy
+                val dx = fingerX - (shipPx - camX)
+                val dy = fingerY - (shipPy - camY)
                 val dist = hypot(dx, dy)
 
                 if (dist > 15f) {
@@ -252,43 +251,37 @@ fun PlayScreen(onExit: () -> Unit) {
             bgOffsetX -= shipVx * 0.25f
             bgOffsetY -= shipVy * 0.25f
 
-            val marginX = sw * 0.22f
-            val marginY = sh * 0.22f
-            val targetCamX = if (shipPx < camX - marginX) shipPx + marginX else if (shipPx > camX + marginX) shipPx - marginX else camX
-            val targetCamY = if (shipPy < camY - marginY) shipPy + marginY else if (shipPy > camY + marginY) shipPy - marginY else camY
-            camX += (targetCamX - camX) * 0.12f
-            camY += (targetCamY - camY) * 0.12f
+            val padX = sw * 0.28f
+            val padY = sh * 0.28f
+            if (shipPx - camX < padX) camX = shipPx - padX
+            if (shipPx - camX > sw - padX) camX = shipPx - (sw - padX)
+            if (shipPy - camY < padY) camY = shipPy - padY
+            if (shipPy - camY > sh - padY) camY = shipPy - (sh - padY)
             bgOffsetX = -camX
             bgOffsetY = -camY
 
-            if (isTouching) {
-                if (fireCd > 0) {
-                    fireCd--
+            if (fireCd > 0) fireCd-- else {
+                fireCd = if (multishot > 0) 8 else 13
+                muzzleFlash = 3
+                sfx.shoot()
+                val bSpeed = if (speedBoost > 0) 24f else 20f
+                val shootRad = (shipAngle - 90f) * PI / 180.0
+                val bvx = (cos(shootRad) * bSpeed).toFloat()
+                val bvy = (sin(shootRad) * bSpeed).toFloat()
+
+                val noseDist = shipPxSize * 0.44f
+                val mx = shipPx + (cos(shootRad) * noseDist).toFloat()
+                val my = shipPy + (sin(shootRad) * noseDist).toFloat()
+
+                if (multishot > 0) {
+                    val sp1 = (shipAngle - 90f - 12f) * PI / 180.0
+                    val sp2 = (shipAngle - 90f + 12f) * PI / 180.0
+                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true, true)
+                    bullets += Bullet(mx, my, (cos(sp1) * bSpeed).toFloat(), (sin(sp1) * bSpeed).toFloat(), shipAngle - 12f, true, true)
+                    bullets += Bullet(mx, my, (cos(sp2) * bSpeed).toFloat(), (sin(sp2) * bSpeed).toFloat(), shipAngle + 12f, true, true)
                 } else {
-                    fireCd = if (multishot > 0) 8 else 13
-                    muzzleFlash = 3
-                    sfx.shoot()
-                    val bSpeed = if (speedBoost > 0) 24f else 20f
-                    val shootRad = (shipAngle - 90f) * PI / 180.0
-                    val bvx = (cos(shootRad) * bSpeed).toFloat()
-                    val bvy = (sin(shootRad) * bSpeed).toFloat()
-
-                    val noseDist = shipPxSize * 0.44f
-                    val mx = shipPx + (cos(shootRad) * noseDist).toFloat()
-                    val my = shipPy + (sin(shootRad) * noseDist).toFloat()
-
-                    if (multishot > 0) {
-                        val sp1 = (shipAngle - 90f - 12f) * PI / 180.0
-                        val sp2 = (shipAngle - 90f + 12f) * PI / 180.0
-                        bullets += Bullet(mx, my, bvx, bvy, shipAngle, true, true)
-                        bullets += Bullet(mx, my, (cos(sp1) * bSpeed).toFloat(), (sin(sp1) * bSpeed).toFloat(), shipAngle - 12f, true, true)
-                        bullets += Bullet(mx, my, (cos(sp2) * bSpeed).toFloat(), (sin(sp2) * bSpeed).toFloat(), shipAngle + 12f, true, true)
-                    } else {
-                        bullets += Bullet(mx, my, bvx, bvy, shipAngle, true)
-                    }
+                    bullets += Bullet(mx, my, bvx, bvy, shipAngle, true)
                 }
-            } else {
-                if (fireCd > 0) fireCd--
             }
 
             if (multishot > 0) multishot--
@@ -297,10 +290,15 @@ fun PlayScreen(onExit: () -> Unit) {
             val maxSpawn = when (wave) { 1 -> 7; 2 -> 11; else -> 16 }
             if (spawnCd > 0) spawnCd-- else if (spawned < maxSpawn) {
                 spawnCd = 60 - wave * 4
-                val spawnAngle = Random.nextFloat() * 2f * PI
-                val spawnDist = max(sw, sh) * 0.75f + 80f
-                val ex = camX + (cos(spawnAngle) * spawnDist).toFloat()
-                val ey = camY + (sin(spawnAngle) * spawnDist).toFloat()
+                val edge = Random.nextInt(4)
+                var ex = 0f
+                var ey = 0f
+                when (edge) {
+                    0 -> { ex = Random.nextFloat() * sw; ey = -70f }
+                    1 -> { ex = sw + 70f; ey = Random.nextFloat() * sh }
+                    2 -> { ex = Random.nextFloat() * sw; ey = sh + 70f }
+                    else -> { ex = -70f; ey = Random.nextFloat() * sh }
+                }
 
                 val roll = Random.nextFloat()
                 val kind = when {
@@ -355,13 +353,13 @@ fun PlayScreen(onExit: () -> Unit) {
 
                 if (e.fireCd > 0) e.fireCd-- else {
                     e.fireCd = when (e.kind) {
-                        EnemyKind.LANG -> 90 - wave * 4
-                        EnemyKind.RUND -> 105 - wave * 4
-                        else -> 115 - wave * 5
+                        EnemyKind.LANG -> 65 - wave * 5
+                        EnemyKind.RUND -> 75 - wave * 5
+                        else -> 80 - wave * 6
                     }
 
                     if (dist > 15f) {
-                        val ebSpeed = 11.5f + wave * 0.5f
+                        val ebSpeed = 5.2f + wave * 0.3f
                         val ebvx = (edx / dist) * ebSpeed
                         val ebvy = (edy / dist) * ebSpeed
 
@@ -494,44 +492,43 @@ fun PlayScreen(onExit: () -> Unit) {
             h = size.height
 
             drawRect(Color(0xFF050510))
-            val toSx = { wx: Float -> wx - camX + size.width / 2f }
-            val toSy = { wy: Float -> wy - camY + size.height / 2f }
 
             // Nahtloses gespiegeltes Parallax-Gitter (keine Kanten mehr!)
             drawMirroredTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
             drawMirroredTiled(starMid, bgOffsetX * 0.50f, bgOffsetY * 0.50f, w, h)
             drawMirroredTiled(starNear, bgOffsetX * 0.90f, bgOffsetY * 0.90f, w, h)
 
-            val half = shipPxSize / 2f
+            translate(left = -camX, top = -camY) {
+                val half = shipPxSize / 2f
 
             enemies.forEachIndexed { i, e ->
                 val isLichtFrame = ((tick / 8 + i) % 2) == 0
-                rotate(degrees = e.angle, pivot = Offset(toSx(e.x), toSy(e.y))) {
+                rotate(degrees = e.angle, pivot = Offset(e.x, e.y)) {
                     when (e.kind) {
                         EnemyKind.LANG -> {
                             val img = if (isLichtFrame) schiffLangLicht else schiffLang
-                            drawImg(img, toSx(e.x) - enemyLangW / 2f, toSy(e.y) - enemyLangH / 2f, enemyLangW, enemyLangH)
+                            drawImg(img, e.x - enemyLangW / 2f, e.y - enemyLangH / 2f, enemyLangW, enemyLangH)
                         }
                         EnemyKind.RUND -> {
                             val img = if (isLichtFrame) schiffRundLicht else schiffRund
-                            drawImg(img, toSx(e.x) - enemyRundSize / 2f, toSy(e.y) - enemyRundSize / 2f, enemyRundSize, enemyRundSize)
+                            drawImg(img, e.x - enemyRundSize / 2f, e.y - enemyRundSize / 2f, enemyRundSize, enemyRundSize)
                         }
                         EnemyKind.BIG -> {
-                            drawImg(enemyBig, toSx(e.x) - bigPxSize / 2f, toSy(e.y) - bigPxSize / 2f, bigPxSize, bigPxSize)
+                            drawImg(enemyBig, e.x - bigPxSize / 2f, e.y - bigPxSize / 2f, bigPxSize, bigPxSize)
                         }
                         EnemyKind.BASIC -> {
                             val img = if ((tick / 12 + i) % 2 == 0) enemyImg else enemyImgB
-                            drawImg(img, toSx(e.x) - enemyPxSize / 2f, toSy(e.y) - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
+                            drawImg(img, e.x - enemyPxSize / 2f, e.y - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
                         }
                     }
                 }
             }
 
             bullets.forEach { b ->
-                rotate(degrees = b.angle, pivot = Offset(toSx(b.x), toSy(b.y))) {
+                rotate(degrees = b.angle, pivot = Offset(b.x, b.y)) {
                     if (b.fromPlayer) {
                         val img = if (b.triple) bulletTriple else bulletImg
-                        drawImg(img, toSx(b.x) - bulletW / 2f, toSy(b.y) - bulletH / 2f, bulletW, bulletH)
+                        drawImg(img, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH)
                     } else {
                         drawImg(bulletEnemy, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH * 0.85f)
                     }
@@ -567,9 +564,9 @@ fun PlayScreen(onExit: () -> Unit) {
                 val ds = shipPxSize * 1.35f
                 drawImg(d, shipPx - ds / 2f, shipPy - ds / 2f, ds, ds)
             } else if (iFrames == 0 || (tick / 3) % 2 == 0) {
-                rotate(degrees = shipAngle, pivot = Offset(toSx(shipPx), toSy(shipPy))) {
+                rotate(degrees = shipAngle, pivot = Offset(shipPx, shipPy)) {
                     val ship = if (multishot > 0) shipTriple else shipSingle
-                    drawImg(ship, toSx(shipPx) - half, toSy(shipPy) - half, shipPxSize, shipPxSize)
+                    drawImg(ship, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
 
                     if (muzzleFlash > 0) {
                         val m = if (muzzleFlash > 2) muzzle1 else muzzle2
@@ -588,7 +585,7 @@ fun PlayScreen(onExit: () -> Unit) {
             }
 
             if (shield > 0) {
-                drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(toSx(shipPx), toSy(shipPy)))
+                drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(shipPx, shipPy))
             }
 
             repeat(lives.coerceAtLeast(0)) { i ->
