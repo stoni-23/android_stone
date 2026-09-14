@@ -148,6 +148,8 @@ fun PlayScreen(onExit: () -> Unit) {
     var fingerX by remember { mutableFloatStateOf(540f) }
     var fingerY by remember { mutableFloatStateOf(700f) }
     var isTouching by remember { mutableStateOf(false) }
+    var camX by remember { mutableFloatStateOf(540f) }
+    var camY by remember { mutableFloatStateOf(960f) }
 
     var score by remember { mutableIntStateOf(0) }
     var lives by remember { mutableIntStateOf(4) }
@@ -215,8 +217,10 @@ fun PlayScreen(onExit: () -> Unit) {
             if (muzzleFlash > 0) muzzleFlash--
 
             if (isTouching) {
-                val dx = fingerX - shipPx
-                val dy = fingerY - shipPy
+                val shipSx = shipPx - camX + sw / 2f
+                val shipSy = shipPy - camY + sh / 2f
+                val dx = fingerX - shipSx
+                val dy = fingerY - shipSy
                 val dist = hypot(dx, dy)
 
                 if (dist > 15f) {
@@ -248,11 +252,14 @@ fun PlayScreen(onExit: () -> Unit) {
             bgOffsetX -= shipVx * 0.25f
             bgOffsetY -= shipVy * 0.25f
 
-            val halfShip = shipPxSize / 2f
-            if (shipPx < -halfShip) shipPx = sw + halfShip
-            else if (shipPx > sw + halfShip) shipPx = -halfShip
-            if (shipPy < -halfShip) shipPy = sh + halfShip
-            else if (shipPy > sh + halfShip) shipPy = -halfShip
+            val marginX = sw * 0.22f
+            val marginY = sh * 0.22f
+            val targetCamX = if (shipPx < camX - marginX) shipPx + marginX else if (shipPx > camX + marginX) shipPx - marginX else camX
+            val targetCamY = if (shipPy < camY - marginY) shipPy + marginY else if (shipPy > camY + marginY) shipPy - marginY else camY
+            camX += (targetCamX - camX) * 0.12f
+            camY += (targetCamY - camY) * 0.12f
+            bgOffsetX = -camX
+            bgOffsetY = -camY
 
             if (isTouching) {
                 if (fireCd > 0) {
@@ -492,6 +499,8 @@ fun PlayScreen(onExit: () -> Unit) {
             h = size.height
 
             drawRect(Color(0xFF050510))
+            val toSx = { wx: Float -> wx - camX + size.width / 2f }
+            val toSy = { wy: Float -> wy - camY + size.height / 2f }
 
             // Nahtloses gespiegeltes Parallax-Gitter (keine Kanten mehr!)
             drawMirroredTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
@@ -502,7 +511,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
             enemies.forEachIndexed { i, e ->
                 val isLichtFrame = ((tick / 8 + i) % 2) == 0
-                rotate(degrees = e.angle, pivot = Offset(e.x, e.y)) {
+                rotate(degrees = e.angle, pivot = Offset(toSx(e.x), toSy(e.y))) {
                     when (e.kind) {
                         EnemyKind.LANG -> {
                             val img = if (isLichtFrame) schiffLangLicht else schiffLang
@@ -524,7 +533,7 @@ fun PlayScreen(onExit: () -> Unit) {
             }
 
             bullets.forEach { b ->
-                rotate(degrees = b.angle, pivot = Offset(b.x, b.y)) {
+                rotate(degrees = b.angle, pivot = Offset(toSx(b.x), toSy(b.y))) {
                     if (b.fromPlayer) {
                         val img = if (b.triple) bulletTriple else bulletImg
                         drawImg(img, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH)
@@ -563,9 +572,9 @@ fun PlayScreen(onExit: () -> Unit) {
                 val ds = shipPxSize * 1.35f
                 drawImg(d, shipPx - ds / 2f, shipPy - ds / 2f, ds, ds)
             } else if (iFrames == 0 || (tick / 3) % 2 == 0) {
-                rotate(degrees = shipAngle, pivot = Offset(shipPx, shipPy)) {
+                rotate(degrees = shipAngle, pivot = Offset(toSx(shipPx), toSy(shipPy))) {
                     val ship = if (multishot > 0) shipTriple else shipSingle
-                    drawImg(ship, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
+                    drawImg(ship, toSx(shipPx) - half, toSy(shipPy) - half, shipPxSize, shipPxSize)
 
                     if (muzzleFlash > 0) {
                         val m = if (muzzleFlash > 2) muzzle1 else muzzle2
@@ -584,7 +593,7 @@ fun PlayScreen(onExit: () -> Unit) {
             }
 
             if (shield > 0) {
-                drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(shipPx, shipPy))
+                drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(toSx(shipPx), toSy(shipPy)))
             }
 
             repeat(lives.coerceAtLeast(0)) { i ->
