@@ -291,8 +291,8 @@ fun PlayScreen(onExit: () -> Unit) {
             if (spawnCd > 0) spawnCd-- else if (spawned < maxSpawn) {
                 spawnCd = 60 - wave * 4
                 val edge = Random.nextInt(4)
-                var ex = 0f
-                var ey = 0f
+                var ex = camX + (if (Random.nextBoolean()) 1 else -1) * (sw * 0.7f + 60f)
+                var ey = camY + (Random.nextFloat() - 0.5f) * (sh * 1.4f)
                 when (edge) {
                     0 -> { ex = Random.nextFloat() * sw; ey = -70f }
                     1 -> { ex = sw + 70f; ey = Random.nextFloat() * sh }
