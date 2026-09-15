@@ -290,10 +290,10 @@ fun PlayScreen(onExit: () -> Unit) {
             val maxSpawn = when (wave) { 1 -> 7; 2 -> 11; else -> 16 }
             if (spawnCd > 0) spawnCd-- else if (spawned < maxSpawn) {
                 spawnCd = 60 - wave * 4
-                val spawnAngle = Random.nextFloat() * 2f * PI
+                val spawnAngle = (Random.nextFloat() * 2.0 * PI)
                 val spawnDist = max(sw, sh) * 0.75f + 120f
-                val ex = shipPx + (cos(spawnAngle) * spawnDist).toFloat()
-                val ey = shipPy + (sin(spawnAngle) * spawnDist).toFloat()
+                val ex = (shipPx + cos(spawnAngle) * spawnDist).toFloat()
+                val ey = (shipPy + sin(spawnAngle) * spawnDist).toFloat()
 
                 val roll = Random.nextFloat()
                 val kind = when {
