@@ -513,139 +513,46 @@ fun PlayScreen(onExit: () -> Unit) {
                         EnemyKind.BIG -> {
                             drawImg(enemyBig, e.x - bigPxSize / 2f, e.y - bigPxSize / 2f, bigPxSize, bigPxSize)
                         }
-                        EnemyKind.BASIC -> {
-                            val img = if ((tick / 12 + i) % 2 == 0) enemyImg else enemyImgB
-                            drawImg(img, e.x - enemyPxSize / 2f, e.y - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
-                        }
-                    }
-                }
-            }
-
-            bullets.forEach { b ->
-                val bx = b.x - camX
-                val by = b.y - camY
-                rotate(degrees = b.angle, pivot = Offset(bx, by)) {
-                    if (b.fromPlayer) {
-                        val img = if (b.triple) bulletTriple else bulletImg
-                        drawImg(img, bx - bulletW / 2f, by - bulletH / 2f, bulletW, bulletH)
-                    } else {
-                        drawImg(bulletEnemy, bx - bulletW / 2f, by - bulletH / 2f, bulletW, bulletH * 0.85f)
-                    }
-                }
-            }
-
-            powerups.forEach { p ->
-                val ring = when (p.type) {
-                    0 -> Color(0xFFFF5252)
-                    1 -> Color(0xFF69F0AE)
-                    else -> Color(0xFF00E5FF)
-                }
-                drawCircle(ring.copy(alpha = 0.22f), 38f, Offset(p.x, p.y))
-                drawCircle(color = ring.copy(alpha = 0.85f), radius = 32f, center = Offset(p.x, p.y), style = Stroke(width = 4f))
-                val img = when (p.type) { 0 -> puWeapon; 1 -> puHeal; else -> puSpeed }
-                val icon = if (p.type == 2) 48f else 38f
-                drawImg(img, p.x - icon / 2f, p.y - icon / 2f, icon, icon)
-            }
-
-            fx.forEach { f ->
-                val img = when (f.kind) { 0 -> boom1; 1 -> boom2; else -> boom3 }
-                val s = 72f + (20 - f.life) * 5f
-                drawImg(img, f.x - s / 2, f.y - s / 2, s, s)
-            }
-
-            if (gameOver) {
-                val d = when (deathFrame.coerceIn(0, 3)) {
-                    0 -> death1
-                    1 -> death2
-                    2 -> death3
-                    else -> death4
-                }
-                val ds = shipPxSize * 1.35f
-                drawImg(d, shipPx - ds / 2f, shipPy - ds / 2f, ds, ds)
-            } else if (iFrames == 0 || (tick / 3) % 2 == 0) {
-                rotate(degrees = shipAngle, pivot = Offset(shipPx, shipPy)) {
-                    val ship = if (multishot > 0) shipTriple else shipSingle
-                    drawImg(ship, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
-
-                    if (muzzleFlash > 0) {
-                        val m = if (muzzleFlash > 2) muzzle1 else muzzle2
-                        val flash = 42f
-                        val mouthY = shipPy - half - flash * 0.55f
-                        if (multishot > 0) {
-                            val offsets = floatArrayOf(-20f, 0f, 20f)
-                            for (ox in offsets) {
-                                drawImg(m, shipPx + ox - flash / 2f, mouthY, flash, flash)
+                            EnemyKind.BASIC -> {
+                                val img = if (isLichtFrame) enemyImgB else enemyImg
+                                drawImg(img, e.x - enemyPxSize / 2f, e.y - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
                             }
-                        } else {
-                            drawImg(m, shipPx - flash / 2f, mouthY, flash, flash)
                         }
                     }
                 }
+                bullets.forEach { b ->
+                    rotate(degrees = b.angle, pivot = Offset(b.x, b.y)) {
+                        val img = when { !b.fromPlayer -> bulletEnemy; b.triple -> bulletTriple; else -> bulletImg }
+                        drawImg(img, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH)
+                    }
+                }
+                powerups.forEach { p ->
+                    val img = when (p.type) { 0 -> puWeapon; 1 -> puHeal; else -> puSpeed }
+                    drawImg(img, p.x - 24f, p.y - 24f, 48f, 48f)
+                }
+                fx.forEach { f ->
+                    val img = when (f.kind) { 0 -> boom1; 1 -> boom2; else -> boom3 }
+                    drawImg(img, f.x - 24f, f.y - 24f, 48f, 48f)
+                }
+                if (!gameOver) {
+                    if (iFrames % 4 < 2) {
+                        rotate(degrees = shipAngle, pivot = Offset(shipPx, shipPy)) {
+                            val curShip = if (multishot > 0) shipTriple else shipSingle
+                            drawImg(curShip, shipPx - shipPxSize / 2f, shipPy - shipPxSize / 2f, shipPxSize, shipPxSize)
+                            if (muzzleFlash > 0) {
+                                val mImg = if (muzzleFlash % 2 == 0) muzzle1 else muzzle2
+                                drawImg(mImg, shipPx - 16f, shipPy - shipPxSize / 2f - 20f, 32f, 32f)
+                            }
+                        }
+                    }
+                } else {
+                    val dImg = when (deathFrame) { 0 -> death1; 1 -> death2; 2 -> death3; else -> death4 }
+                    drawImg(dImg, shipPx - shipPxSize / 2f, shipPy - shipPxSize / 2f, shipPxSize, shipPxSize)
+                }
             }
-
-            if (shield > 0) {
-                drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(shipPx, shipPy))
-            }
-
-            repeat(lives.coerceAtLeast(0)) { i ->
-                drawImg(heartImg, 12f + i * 32f, 12f, 28f, 28f)
-            }
-        }
-
-        Text(
-            "Score $score  Hi $high  W$wave",
-            color = Color(0xFFF2E6D0),
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
-        )
-        Text(
-            banner,
-            color = Color(0xFFC9A66B),
-            fontSize = 13.sp,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp)
-        )
-        TextButton(onClick = { paused = !paused }, modifier = Modifier.align(Alignment.TopStart).padding(top = 44.dp)) {
-            Text(if (paused) "Weiter" else "Pause", color = Color.White)
-        }
-        if (paused) {
-            Text("Pause", color = Color.White, fontSize = 18.sp, modifier = Modifier.align(Alignment.Center))
-        }
-        if (gameOver || won) {
-            TextButton(onClick = onExit, modifier = Modifier.align(Alignment.BottomCenter).padding(32.dp)) {
-                Text(if (won) "Menü" else "Nochmal / Menü", color = Color.White, fontSize = 16.sp)
-            }
-        }
-    }
-}
-
-// Spiegelt abwechselnd horizontal & vertikal für 100% nahtlose Kanten
-private fun DrawScope.drawMirroredTiled(img: ImageBitmap, offX: Float, offY: Float, sw: Float, sh: Float) {
-    val tw = sw
-    val th = sh
-    val startCol = floor(-offX / tw).toInt() - 1
-    val endCol = ceil((sw - offX) / tw).toInt() + 1
-    val startRow = floor(-offY / th).toInt() - 1
-    val endRow = ceil((sh - offY) / th).toInt() + 1
-
-    for (col in startCol..endCol) {
-        for (row in startRow..endRow) {
-            val posX = offX + col * tw
-            val posY = offY + row * th
-            val flipX = if (col % 2 != 0) -1f else 1f
-            val flipY = if (row % 2 != 0) -1f else 1f
-
-            scale(scaleX = flipX, scaleY = flipY, pivot = Offset(posX + tw / 2f, posY + th / 2f)) {
-                drawImg(img, posX, posY, tw, th)
+            for (i in 0 until lives) {
+                drawImg(heartImg, 24f + i * 40f, 40f, 32f, 32f)
             }
         }
     }
-}
-
-private fun DrawScope.drawImg(img: ImageBitmap, x: Float, y: Float, dw: Float, dh: Float) {
-    drawImage(
-        image = img,
-        dstOffset = IntOffset(x.toInt(), y.toInt()),
-        dstSize = IntSize(dw.toInt(), dh.toInt()),
-        filterQuality = FilterQuality.Low
-    )
 }
