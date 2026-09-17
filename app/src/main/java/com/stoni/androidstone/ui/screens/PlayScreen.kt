@@ -619,8 +619,6 @@ fun PlayScreen(onExit: () -> Unit) {
 }
 
 // Spiegelt abwechselnd horizontal & vertikal für 100% nahtlose Kanten
-    }
-}
 private fun DrawScope.drawMirroredTiled(img: ImageBitmap, offX: Float, offY: Float, sw: Float, sh: Float) {
     val tw = sw
     val th = sh
