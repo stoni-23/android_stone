@@ -252,6 +252,8 @@ fun PlayScreen(onExit: () -> Unit) {
             bgOffsetY -= shipVy * 0.25f
 
             val padX = sw * 0.28f
+            shipPx = shipPx.coerceIn(-2000f, 2000f)
+            shipPy = shipPy.coerceIn(-2000f, 2000f)
             val padY = sh * 0.28f
             if (shipPx - camX < padX) camX = shipPx - padX
             if (shipPx - camX > sw - padX) camX = shipPx - (sw - padX)
@@ -374,7 +376,7 @@ fun PlayScreen(onExit: () -> Unit) {
             powerups.forEach { it.y += 0.5f }
             fx.forEach { it.life-- }
             fx.removeAll { it.life <= 0 }
-            bullets.removeAll { it.x < -100 || it.x > sw + 100 || it.y < -100 || it.y > sh + 100 }
+            bullets.removeAll { hypot(it.x - shipPx, it.y - shipPy) > max(sw, sh) * 1.5f }
             powerups.removeAll { it.y > sh + 50 }
 
             val hitEnemies = mutableSetOf<Enemy>()
@@ -520,12 +522,14 @@ fun PlayScreen(onExit: () -> Unit) {
             }
 
             bullets.forEach { b ->
-                rotate(degrees = b.angle, pivot = Offset(b.x, b.y)) {
+                val bx = b.x - camX
+                val by = b.y - camY
+                rotate(degrees = b.angle, pivot = Offset(bx, by)) {
                     if (b.fromPlayer) {
                         val img = if (b.triple) bulletTriple else bulletImg
-                        drawImg(img, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH)
+                        drawImg(img, bx - bulletW / 2f, by - bulletH / 2f, bulletW, bulletH)
                     } else {
-                        drawImg(bulletEnemy, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH * 0.85f)
+                        drawImg(bulletEnemy, bx - bulletW / 2f, by - bulletH / 2f, bulletW, bulletH * 0.85f)
                     }
                 }
             }
