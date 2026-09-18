@@ -25,6 +25,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -38,7 +39,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -54,6 +54,7 @@ import com.stoni.androidstone.R
 import com.stoni.androidstone.game.loadStargameAssetOrNull
 import kotlinx.coroutines.delay
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -70,6 +71,7 @@ private data class Bullet(
     val angle: Float,
     val fromPlayer: Boolean,
     val triple: Boolean = false,
+    var life: Int = 55,
 )
 
 private data class Enemy(
@@ -120,12 +122,11 @@ private fun wrapMod(value: Float, size: Float): Float {
     return if (r < 0f) r + size else r
 }
 
-private fun wrapWorld(value: Float, world: Float): Float {
-    if (world <= 0f) return value
-    var v = value
-    while (v < 0f) v += world
-    while (v >= world) v -= world
-    return v
+private fun shortest(a: Float, b: Float, size: Float): Float {
+    var d = a - b
+    if (d > size * 0.5f) d -= size
+    if (d < -size * 0.5f) d += size
+    return d
 }
 
 private fun angleDiff(from: Float, to: Float): Float {
@@ -190,8 +191,8 @@ private fun DrawScope.drawEnemyFallback(kind: EnemyKind, cx: Float, cy: Float, w
                 lineTo(cx - w * 0.42f, cy + h * 0.38f)
                 close()
             }
-            drawPath(path, Color(0xFF7CB342))
-            drawPath(path, Color(0xFFC5E1A5), style = Stroke(width = 2f))
+            drawPath(path, Color(0xFF8BC34A))
+            drawPath(path, Color(0xFFE8F5E9), style = Stroke(width = 3f))
         }
         EnemyKind.LANG -> {
             val path = Path().apply {
@@ -202,22 +203,17 @@ private fun DrawScope.drawEnemyFallback(kind: EnemyKind, cx: Float, cy: Float, w
                 close()
             }
             drawPath(path, Color(0xFF26A69A))
-            drawCircle(Color(0xFF80CBC4), radius = w * 0.16f, center = Offset(cx, cy - h * 0.08f))
+            drawPath(path, Color(0xFFB2DFDB), style = Stroke(width = 3f))
         }
         EnemyKind.RUND -> {
             drawCircle(Color(0xFF00897B), radius = w * 0.48f, center = Offset(cx, cy))
             drawCircle(Color(0xFF004D40), radius = w * 0.22f, center = Offset(cx, cy))
-            drawCircle(
-                Color(0xFF80CBC4),
-                radius = w * 0.48f,
-                center = Offset(cx, cy),
-                style = Stroke(width = 3f),
-            )
+            drawCircle(Color(0xFF80CBC4), radius = w * 0.48f, center = Offset(cx, cy), style = Stroke(width = 4f))
         }
         EnemyKind.BIG -> {
             drawCircle(Color(0xFF558B2F), radius = w * 0.48f, center = Offset(cx, cy))
             drawCircle(Color(0xFF33691E), radius = w * 0.28f, center = Offset(cx, cy))
-            drawCircle(Color(0xFFC5E1A5), radius = w * 0.1f, center = Offset(cx, cy - w * 0.12f))
+            drawCircle(Color(0xFFDCEDC8), radius = w * 0.48f, center = Offset(cx, cy), style = Stroke(width = 4f))
         }
     }
 }
@@ -246,10 +242,30 @@ private fun DrawScope.drawPlayerFallback(cx: Float, cy: Float, size: Float, trip
         close()
     }
     drawPath(path, Color(0xFFC9A66B))
+    drawPath(path, Color(0xFFE8E4DC), style = Stroke(width = 3f))
     drawCircle(Color(0xFFE8E4DC), radius = size * 0.08f, center = Offset(cx, cy - size * 0.06f))
     if (triple) {
         drawCircle(Color(0xFF7EC8C4), radius = size * 0.06f, center = Offset(cx - size * 0.22f, cy + size * 0.08f))
         drawCircle(Color(0xFF7EC8C4), radius = size * 0.06f, center = Offset(cx + size * 0.22f, cy + size * 0.08f))
+    }
+}
+
+private fun DrawScope.drawWrapped(
+    x: Float,
+    y: Float,
+    sw: Float,
+    sh: Float,
+    pad: Float,
+    block: (Float, Float) -> Unit,
+) {
+    for (ox in floatArrayOf(-sw, 0f, sw)) {
+        for (oy in floatArrayOf(-sh, 0f, sh)) {
+            val dx = x + ox
+            val dy = y + oy
+            if (dx > -pad && dx < sw + pad && dy > -pad && dy < sh + pad) {
+                block(dx, dy)
+            }
+        }
     }
 }
 
@@ -258,12 +274,12 @@ fun PlayScreen(onExit: () -> Unit) {
     val context = LocalContext.current
     val density = LocalDensity.current
 
-    val shipPxSize = with(density) { 68.dp.toPx() }
-    val enemyPxSize = with(density) { 48.dp.toPx() }
-    val enemyLangW = with(density) { 46.dp.toPx() }
-    val enemyLangH = with(density) { 72.dp.toPx() }
-    val enemyRundSize = with(density) { 64.dp.toPx() }
-    val bigPxSize = with(density) { 82.dp.toPx() }
+    val shipPxSize = with(density) { 72.dp.toPx() }
+    val enemyPxSize = with(density) { 56.dp.toPx() }
+    val enemyLangW = with(density) { 52.dp.toPx() }
+    val enemyLangH = with(density) { 86.dp.toPx() }
+    val enemyRundSize = with(density) { 72.dp.toPx() }
+    val bigPxSize = with(density) { 96.dp.toPx() }
     val bulletW = with(density) { 14.dp.toPx() }
     val bulletH = with(density) { 26.dp.toPx() }
     val prefs = remember { context.getSharedPreferences("stargame", Context.MODE_PRIVATE) }
@@ -305,30 +321,31 @@ fun PlayScreen(onExit: () -> Unit) {
 
     var w by remember { mutableFloatStateOf(1f) }
     var h by remember { mutableFloatStateOf(1f) }
-    val world = 4200f
 
-    var shipPx by remember { mutableFloatStateOf(world / 2f) }
-    var shipPy by remember { mutableFloatStateOf(world / 2f) }
+    var shipPx by remember { mutableFloatStateOf(0f) }
+    var shipPy by remember { mutableFloatStateOf(0f) }
     var shipVx by remember { mutableFloatStateOf(0f) }
     var shipVy by remember { mutableFloatStateOf(0f) }
     var shipAngle by remember { mutableFloatStateOf(0f) }
+    var placed by remember { mutableStateOf(false) }
 
     var stickActive by remember { mutableStateOf(false) }
+    var thrusting by remember { mutableStateOf(false) }
     var stickOx by remember { mutableFloatStateOf(0f) }
     var stickOy by remember { mutableFloatStateOf(0f) }
     var stickX by remember { mutableFloatStateOf(0f) }
     var stickY by remember { mutableFloatStateOf(0f) }
     var fireHeld by remember { mutableStateOf(false) }
 
-    var camX by remember { mutableFloatStateOf(world / 2f) }
-    var camY by remember { mutableFloatStateOf(world / 2f) }
+    var starOffX by remember { mutableFloatStateOf(0f) }
+    var starOffY by remember { mutableFloatStateOf(0f) }
 
     var score by remember { mutableIntStateOf(0) }
     var lives by remember { mutableIntStateOf(4) }
     var paused by remember { mutableStateOf(false) }
     var gameOver by remember { mutableStateOf(false) }
     var won by remember { mutableStateOf(false) }
-    var banner by remember { mutableStateOf("Feindflotte gesichtet! Abfangen!") }
+    var banner by remember { mutableStateOf("Links schieben = drehen + fliegen") }
     var multishot by remember { mutableIntStateOf(0) }
     var shield by remember { mutableIntStateOf(0) }
     var speedBoost by remember { mutableIntStateOf(0) }
@@ -338,12 +355,12 @@ fun PlayScreen(onExit: () -> Unit) {
     var iFrames by remember { mutableIntStateOf(0) }
     var deathFrame by remember { mutableIntStateOf(0) }
 
-    val bullets = remember { mutableListOf<Bullet>() }
-    val enemies = remember { mutableListOf<Enemy>() }
-    val powerups = remember { mutableListOf<PowerUp>() }
-    val fx = remember { mutableListOf<Fx>() }
+    val bullets = remember { mutableStateListOf<Bullet>() }
+    val enemies = remember { mutableStateListOf<Enemy>() }
+    val powerups = remember { mutableStateListOf<PowerUp>() }
+    val fx = remember { mutableStateListOf<Fx>() }
     var fireCd by remember { mutableIntStateOf(0) }
-    var spawnCd by remember { mutableIntStateOf(20) }
+    var spawnCd by remember { mutableIntStateOf(8) }
     var wave by remember { mutableIntStateOf(1) }
     var spawned by remember { mutableIntStateOf(0) }
 
@@ -363,18 +380,17 @@ fun PlayScreen(onExit: () -> Unit) {
         lives = 4
         wave = 1
         spawned = 0
-        spawnCd = 40
+        spawnCd = 8
         fireCd = 0
         gameOver = false
         won = false
         paused = false
-        shipPx = world / 2f
-        shipPy = world / 2f
+        shipPx = w / 2f
+        shipPy = h / 2f
         shipVx = 0f
         shipVy = 0f
         shipAngle = 0f
-        camX = shipPx
-        camY = shipPy
+        placed = w > 10f
         iFrames = 0
         multishot = 0
         shield = 0
@@ -384,9 +400,10 @@ fun PlayScreen(onExit: () -> Unit) {
         tick = 0
         fireHeld = false
         stickActive = false
+        thrusting = false
         stickX = 0f
         stickY = 0f
-        banner = "Feindflotte gesichtet! Abfangen!"
+        banner = "Links schieben = drehen + fliegen"
     }
 
     fun hurtPlayer() {
@@ -409,60 +426,65 @@ fun PlayScreen(onExit: () -> Unit) {
         while (!paused && !gameOver && !won) {
             delay(16)
             tick++
-            val sw = w.coerceAtLeast(1f)
-            val sh = h.coerceAtLeast(1f)
+            val sw = w
+            val sh = h
+            if (sw < 80f || sh < 80f) continue
+
+            if (!placed) {
+                shipPx = sw / 2f
+                shipPy = sh / 2f
+                placed = true
+            }
 
             if (iFrames > 0) iFrames--
             if (muzzleFlash > 0) muzzleFlash--
 
-            val turn = (-stickX).coerceIn(-1f, 1f)
-            val turnRate = if (speedBoost > 0) 6.4f else 5.2f
-            shipAngle = wrapMod(shipAngle + turn * turnRate, 360f)
-
-            val (fxFwd, fyFwd) = headingRad(shipAngle)
-            val thrustAmt = (-stickY).coerceIn(-1f, 1f)
-            val thrustPower = if (speedBoost > 0) 0.55f else 0.38f
-            if (stickActive && kotlin.math.abs(thrustAmt) > 0.12f) {
-                shipVx += fxFwd * thrustAmt * thrustPower
-                shipVy += fyFwd * thrustAmt * thrustPower
+            val mag = hypot(stickX, stickY)
+            thrusting = stickActive && mag > 0.12f
+            if (thrusting) {
+                val want = (atan2(stickX, -stickY) * 180.0 / PI).toFloat()
+                val turnRate = if (speedBoost > 0) 8.5f else 6.5f
+                val diff = angleDiff(shipAngle, want)
+                shipAngle = wrapMod(shipAngle + diff.coerceIn(-turnRate, turnRate), 360f)
+                val (fxFwd, fyFwd) = headingRad(shipAngle)
+                val thrustPower = if (speedBoost > 0) 0.62f else 0.42f
+                shipVx += fxFwd * thrustPower * mag.coerceAtMost(1f)
+                shipVy += fyFwd * thrustPower * mag.coerceAtMost(1f)
             }
 
             val friction = 0.985f
             shipVx *= friction
             shipVy *= friction
-            val maxSpd = if (speedBoost > 0) 16f else 11.5f
+            val maxSpd = if (speedBoost > 0) 14f else 9.5f
             val spd = hypot(shipVx, shipVy)
             if (spd > maxSpd) {
                 shipVx = (shipVx / spd) * maxSpd
                 shipVy = (shipVy / spd) * maxSpd
             }
 
-            shipPx = wrapWorld(shipPx + shipVx, world)
-            shipPy = wrapWorld(shipPy + shipVy, world)
+            shipPx = wrapMod(shipPx + shipVx, sw)
+            shipPy = wrapMod(shipPy + shipVy, sh)
+            starOffX -= shipVx * 0.55f
+            starOffY -= shipVy * 0.55f
 
-            val look = 90f
-            val targetCamX = shipPx + fxFwd * look
-            val targetCamY = shipPy + fyFwd * look
-            camX += (targetCamX - camX) * 0.14f
-            camY += (targetCamY - camY) * 0.14f
+            val (noseX, noseY) = headingRad(shipAngle)
 
             if (fireCd > 0) fireCd--
             if (fireHeld && fireCd <= 0 && iFrames < 70) {
-                fireCd = if (multishot > 0) 8 else 13
+                fireCd = if (multishot > 0) 8 else 12
                 muzzleFlash = 3
                 sfx.shoot()
-                val bSpeed = if (speedBoost > 0) 22f else 18f
-                val nose = shipPxSize * 0.44f
-                val mx = shipPx + fxFwd * nose
-                val my = shipPy + fyFwd * nose
+                val bSpeed = if (speedBoost > 0) 18f else 14f
+                val mx = wrapMod(shipPx + noseX * shipPxSize * 0.48f, sw)
+                val my = wrapMod(shipPy + noseY * shipPxSize * 0.48f, sh)
                 if (multishot > 0) {
-                    val (lx, ly) = headingRad(shipAngle - 12f)
-                    val (rx, ry) = headingRad(shipAngle + 12f)
-                    bullets += Bullet(mx, my, fxFwd * bSpeed, fyFwd * bSpeed, shipAngle, true, true)
-                    bullets += Bullet(mx, my, lx * bSpeed, ly * bSpeed, shipAngle - 12f, true, true)
-                    bullets += Bullet(mx, my, rx * bSpeed, ry * bSpeed, shipAngle + 12f, true, true)
+                    val (lx, ly) = headingRad(shipAngle - 14f)
+                    val (rx, ry) = headingRad(shipAngle + 14f)
+                    bullets += Bullet(mx, my, noseX * bSpeed, noseY * bSpeed, shipAngle, true, true)
+                    bullets += Bullet(mx, my, lx * bSpeed, ly * bSpeed, shipAngle - 14f, true, true)
+                    bullets += Bullet(mx, my, rx * bSpeed, ry * bSpeed, shipAngle + 14f, true, true)
                 } else {
-                    bullets += Bullet(mx, my, fxFwd * bSpeed, fyFwd * bSpeed, shipAngle, true)
+                    bullets += Bullet(mx, my, noseX * bSpeed, noseY * bSpeed, shipAngle, true)
                 }
             }
 
@@ -471,22 +493,26 @@ fun PlayScreen(onExit: () -> Unit) {
             if (speedBoost > 0) speedBoost--
 
             val maxSpawn = when (wave) {
-                1 -> 7
-                2 -> 11
-                else -> 16
+                1 -> 5
+                2 -> 8
+                else -> 12
             }
             if (spawnCd > 0) spawnCd-- else if (spawned < maxSpawn) {
-                spawnCd = (52 - wave * 4).coerceAtLeast(22)
-                val spawnAngle = Random.nextFloat() * (2.0 * PI)
-                val spawnDist = maxOf(sw, sh) * 0.72f + 140f
-                val ex = wrapWorld(shipPx + (cos(spawnAngle) * spawnDist).toFloat(), world)
-                val ey = wrapWorld(shipPy + (sin(spawnAngle) * spawnDist).toFloat(), world)
+                spawnCd = (40 - wave * 4).coerceAtLeast(18)
+                var ex = 0f
+                var ey = 0f
+                var tries = 0
+                do {
+                    ex = 40f + Random.nextFloat() * (sw - 80f)
+                    ey = 80f + Random.nextFloat() * (sh - 160f)
+                    tries++
+                } while (hypot(shortest(ex, shipPx, sw), shortest(ey, shipPy, sh)) < 200f && tries < 24)
 
                 val roll = Random.nextFloat()
                 val kind = when {
-                    wave >= 3 && roll < 0.20f -> EnemyKind.BIG
-                    wave >= 2 && roll < 0.50f -> EnemyKind.RUND
-                    roll < 0.80f -> EnemyKind.LANG
+                    wave >= 3 && roll < 0.22f -> EnemyKind.BIG
+                    wave >= 2 && roll < 0.52f -> EnemyKind.RUND
+                    roll < 0.82f -> EnemyKind.LANG
                     else -> EnemyKind.BASIC
                 }
                 val hp = when (kind) {
@@ -495,20 +521,15 @@ fun PlayScreen(onExit: () -> Unit) {
                     EnemyKind.LANG -> 2
                     EnemyKind.BASIC -> 1
                 }
-                enemies += Enemy(
-                    x = ex,
-                    y = ey,
-                    hp = hp,
-                    fireCd = 40 + Random.nextInt(40),
-                    kind = kind,
-                    angle = Random.nextFloat() * 360f,
-                )
+                val face = (atan2(shortest(shipPx, ex, sw), -shortest(shipPy, ey, sh)) * 180.0 / PI).toFloat()
+                enemies += Enemy(ex, ey, hp, 30 + Random.nextInt(40), kind, face)
                 spawned++
+                if (spawned == 1) banner = "Feinde im Orbit — drehen und schieben!"
             } else if (enemies.isEmpty() && bullets.none { !it.fromPlayer }) {
                 if (wave < 3) {
                     wave++
                     spawned = 0
-                    spawnCd = 55
+                    spawnCd = 35
                     banner = "Welle $wave"
                 } else {
                     won = true
@@ -518,41 +539,37 @@ fun PlayScreen(onExit: () -> Unit) {
             }
 
             enemies.forEach { e ->
-                var dx = shipPx - e.x
-                var dy = shipPy - e.y
-                if (dx > world * 0.5f) dx -= world
-                if (dx < -world * 0.5f) dx += world
-                if (dy > world * 0.5f) dy -= world
-                if (dy < -world * 0.5f) dy += world
+                val dx = shortest(shipPx, e.x, sw)
+                val dy = shortest(shipPy, e.y, sh)
                 val dist = hypot(dx, dy)
                 val want = (atan2(dx, -dy) * 180.0 / PI).toFloat()
                 val turnSpeed = when (e.kind) {
-                    EnemyKind.LANG -> 4.6f
-                    EnemyKind.RUND -> 2.4f
-                    EnemyKind.BIG -> 1.6f
-                    EnemyKind.BASIC -> 3.4f
+                    EnemyKind.LANG -> 4.8f
+                    EnemyKind.RUND -> 2.6f
+                    EnemyKind.BIG -> 1.8f
+                    EnemyKind.BASIC -> 3.6f
                 }
                 val diff = angleDiff(e.angle, want)
                 e.angle = wrapMod(e.angle + diff.coerceIn(-turnSpeed, turnSpeed), 360f)
 
                 val eSpeed = when (e.kind) {
-                    EnemyKind.LANG -> 2.4f + wave * 0.16f
-                    EnemyKind.RUND -> 1.15f + wave * 0.08f
-                    EnemyKind.BIG -> 0.85f
-                    EnemyKind.BASIC -> 1.7f + wave * 0.14f
+                    EnemyKind.LANG -> 2.6f + wave * 0.18f
+                    EnemyKind.RUND -> 1.35f + wave * 0.1f
+                    EnemyKind.BIG -> 0.95f
+                    EnemyKind.BASIC -> 1.9f + wave * 0.16f
                 }
                 val (exF, eyF) = headingRad(e.angle)
-                e.x = wrapWorld(e.x + exF * eSpeed, world)
-                e.y = wrapWorld(e.y + eyF * eSpeed, world)
+                e.x = wrapMod(e.x + exF * eSpeed, sw)
+                e.y = wrapMod(e.y + eyF * eSpeed, sh)
 
                 if (e.fireCd > 0) e.fireCd-- else {
                     e.fireCd = when (e.kind) {
-                        EnemyKind.LANG -> (62 - wave * 5).coerceAtLeast(28)
-                        EnemyKind.RUND -> (72 - wave * 5).coerceAtLeast(34)
-                        else -> (78 - wave * 6).coerceAtLeast(36)
+                        EnemyKind.LANG -> (58 - wave * 5).coerceAtLeast(26)
+                        EnemyKind.RUND -> (68 - wave * 5).coerceAtLeast(32)
+                        else -> (74 - wave * 6).coerceAtLeast(34)
                     }
-                    if (dist > 40f && kotlin.math.abs(diff) < 28f) {
-                        val ebSpeed = 5.0f + wave * 0.28f
+                    if (dist > 50f && abs(diff) < 32f) {
+                        val ebSpeed = 4.6f + wave * 0.28f
                         if (e.kind == EnemyKind.RUND) {
                             val (a1x, a1y) = headingRad(e.angle - 16f)
                             val (a2x, a2y) = headingRad(e.angle + 16f)
@@ -565,27 +582,33 @@ fun PlayScreen(onExit: () -> Unit) {
                 }
             }
 
+            val deadBullets = mutableListOf<Bullet>()
             bullets.forEach { b ->
-                b.x = wrapWorld(b.x + b.vx, world)
-                b.y = wrapWorld(b.y + b.vy, world)
+                b.x = wrapMod(b.x + b.vx, sw)
+                b.y = wrapMod(b.y + b.vy, sh)
+                b.life--
+                if (b.life <= 0) deadBullets += b
             }
-            powerups.forEach { it.y += 0.35f }
+            bullets.removeAll(deadBullets)
+
+            powerups.forEach { p ->
+                p.y = wrapMod(p.y + 0.45f, sh)
+            }
+            val deadFx = fx.filter { it.life <= 1 }
             fx.forEach { it.life-- }
-            fx.removeAll { it.life <= 0 }
-            bullets.removeAll { hypot(shortest(it.x, shipPx, world), shortest(it.y, shipPy, world)) > maxOf(sw, sh) * 1.45f }
-            powerups.removeAll { it.y > world }
+            fx.removeAll(deadFx)
 
             val hitEnemies = mutableSetOf<Enemy>()
             val hitBullets = mutableSetOf<Bullet>()
             for (b in bullets.filter { it.fromPlayer }) {
                 for (e in enemies) {
                     val r = when (e.kind) {
-                        EnemyKind.BIG -> bigPxSize * 0.45f
-                        EnemyKind.RUND -> enemyRundSize * 0.45f
-                        EnemyKind.LANG -> enemyLangH * 0.40f
-                        EnemyKind.BASIC -> enemyPxSize * 0.45f
+                        EnemyKind.BIG -> bigPxSize * 0.42f
+                        EnemyKind.RUND -> enemyRundSize * 0.42f
+                        EnemyKind.LANG -> enemyLangH * 0.36f
+                        EnemyKind.BASIC -> enemyPxSize * 0.42f
                     }
-                    if (hypot(shortest(b.x, e.x, world), shortest(b.y, e.y, world)) < r) {
+                    if (hypot(shortest(b.x, e.x, sw), shortest(b.y, e.y, sh)) < r) {
                         hitBullets += b
                         e.hp--
                         fx += Fx(e.x, e.y, 8, 0)
@@ -607,27 +630,27 @@ fun PlayScreen(onExit: () -> Unit) {
                     }
                 }
             }
-            bullets.removeAll { it in hitBullets }
-            enemies.removeAll { it in hitEnemies }
+            bullets.removeAll(hitBullets)
+            enemies.removeAll(hitEnemies)
 
             val enemyHits = mutableSetOf<Bullet>()
             for (b in bullets.filter { !it.fromPlayer }) {
-                if (hypot(shortest(b.x, shipPx, world), shortest(b.y, shipPy, world)) < shipPxSize * 0.32f) {
+                if (hypot(shortest(b.x, shipPx, sw), shortest(b.y, shipPy, sh)) < shipPxSize * 0.32f) {
                     enemyHits += b
                     fx += Fx(shipPx, shipPy, 10, 0)
                     hurtPlayer()
                 }
             }
-            bullets.removeAll { it in enemyHits }
+            bullets.removeAll(enemyHits)
 
             enemies.toList().forEach { e ->
                 val r = when (e.kind) {
-                    EnemyKind.BIG -> bigPxSize * 0.45f
-                    EnemyKind.RUND -> enemyRundSize * 0.45f
-                    EnemyKind.LANG -> enemyLangH * 0.40f
-                    EnemyKind.BASIC -> enemyPxSize * 0.45f
+                    EnemyKind.BIG -> bigPxSize * 0.42f
+                    EnemyKind.RUND -> enemyRundSize * 0.42f
+                    EnemyKind.LANG -> enemyLangH * 0.36f
+                    EnemyKind.BASIC -> enemyPxSize * 0.42f
                 }
-                if (hypot(shortest(e.x, shipPx, world), shortest(e.y, shipPy, world)) < (r + shipPxSize * 0.30f)) {
+                if (hypot(shortest(e.x, shipPx, sw), shortest(e.y, shipPy, sh)) < (r + shipPxSize * 0.28f)) {
                     fx += Fx(e.x, e.y, 14, 1)
                     enemies.remove(e)
                     hurtPlayer()
@@ -636,7 +659,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
             val got = mutableSetOf<PowerUp>()
             for (p in powerups) {
-                if (hypot(shortest(p.x, shipPx, world), shortest(p.y, shipPy, world)) < 48f) {
+                if (hypot(shortest(p.x, shipPx, sw), shortest(p.y, shipPy, sh)) < 52f) {
                     got += p
                     sfx.pickup()
                     when (p.type) {
@@ -655,7 +678,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     }
                 }
             }
-            powerups.removeAll { it in got }
+            powerups.removeAll(got)
         }
     }
 
@@ -674,8 +697,191 @@ fun PlayScreen(onExit: () -> Unit) {
             .fillMaxSize()
             .background(Color(0xFF050510)),
     ) {
-        Canvas(
-            modifier = Modifier
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            w = size.width
+            h = size.height
+            val sw = size.width
+            val sh = size.height
+
+            drawRect(Color(0xFF050510))
+            drawMirroredTiled(starFar, starOffX * 0.35f, starOffY * 0.35f, sw, sh)
+            drawMirroredTiled(starMid, starOffX * 0.7f, starOffY * 0.7f, sw, sh)
+            drawMirroredTiled(starNear, starOffX, starOffY, sw, sh)
+
+            enemies.forEachIndexed { i, e ->
+                val isLichtFrame = ((tick / 8 + i) % 2) == 0
+                val (ew, eh, img) = when (e.kind) {
+                    EnemyKind.LANG -> Triple(
+                        enemyLangW,
+                        enemyLangH,
+                        if (isLichtFrame) schiffLangLicht else schiffLang,
+                    )
+                    EnemyKind.RUND -> Triple(
+                        enemyRundSize,
+                        enemyRundSize,
+                        if (isLichtFrame) schiffRundLicht else schiffRund,
+                    )
+                    EnemyKind.BIG -> Triple(bigPxSize, bigPxSize, enemyBig)
+                    EnemyKind.BASIC -> Triple(
+                        enemyPxSize,
+                        enemyPxSize,
+                        if (isLichtFrame) enemyImgB else enemyImg,
+                    )
+                }
+                drawWrapped(e.x, e.y, sw, sh, maxOf(ew, eh)) { dx, dy ->
+                    rotate(degrees = e.angle, pivot = Offset(dx, dy)) {
+                        drawSpriteOrFallback(img, e.kind, dx, dy, ew, eh)
+                    }
+                }
+            }
+
+            bullets.forEach { b ->
+                drawWrapped(b.x, b.y, sw, sh, 32f) { dx, dy ->
+                    rotate(degrees = b.angle, pivot = Offset(dx, dy)) {
+                        val img = when {
+                            !b.fromPlayer -> bulletEnemy
+                            b.triple -> bulletTriple
+                            else -> bulletImg
+                        }
+                        if (img != null) {
+                            drawImg(img, dx - bulletW / 2f, dy - bulletH / 2f, bulletW, bulletH)
+                        } else {
+                            val col = if (b.fromPlayer) Color(0xFF7EC8C4) else Color(0xFFE57373)
+                            drawCircle(col, radius = 6f, center = Offset(dx, dy))
+                        }
+                    }
+                }
+            }
+
+            powerups.forEach { p ->
+                drawWrapped(p.x, p.y, sw, sh, 40f) { dx, dy ->
+                    val img = when (p.type) {
+                        0 -> puWeapon
+                        1 -> puHeal
+                        else -> puSpeed
+                    }
+                    if (img != null) {
+                        drawImg(img, dx - 24f, dy - 24f, 48f, 48f)
+                    } else {
+                        val col = when (p.type) {
+                            0 -> Color(0xFF7EC8C4)
+                            1 -> Color(0xFF81C784)
+                            else -> Color(0xFF90CAF9)
+                        }
+                        drawCircle(col, radius = 16f, center = Offset(dx, dy))
+                    }
+                }
+            }
+
+            fx.forEach { f ->
+                val img = when (f.kind) {
+                    0 -> boom1
+                    1 -> boom2
+                    else -> boom3
+                }
+                if (img != null) {
+                    drawImg(img, f.x - 28f, f.y - 28f, 56f, 56f)
+                } else {
+                    drawCircle(Color(0x88FFCC80), radius = 12f + f.life, center = Offset(f.x, f.y))
+                }
+            }
+
+            if (!gameOver) {
+                if (iFrames % 4 < 2) {
+                    drawWrapped(shipPx, shipPy, sw, sh, shipPxSize) { dx, dy ->
+                        rotate(degrees = shipAngle, pivot = Offset(dx, dy)) {
+                            if (thrusting) {
+                                val flame = Path().apply {
+                                    moveTo(dx, dy + shipPxSize * 0.22f)
+                                    lineTo(dx - 7f, dy + shipPxSize * 0.38f)
+                                    lineTo(dx, dy + shipPxSize * 0.62f + (tick % 3) * 4f)
+                                    lineTo(dx + 7f, dy + shipPxSize * 0.38f)
+                                    close()
+                                }
+                                drawPath(flame, Color(0xFFFFCC80))
+                            }
+                            val curShip = if (multishot > 0) shipTriple else shipSingle
+                            if (curShip != null) {
+                                drawImg(
+                                    curShip,
+                                    dx - shipPxSize / 2f,
+                                    dy - shipPxSize / 2f,
+                                    shipPxSize,
+                                    shipPxSize,
+                                )
+                            } else {
+                                drawPlayerFallback(dx, dy, shipPxSize, multishot > 0)
+                            }
+                            if (muzzleFlash > 0) {
+                                val mImg = if (muzzleFlash % 2 == 0) muzzle1 else muzzle2
+                                drawImg(mImg, dx - 16f, dy - shipPxSize / 2f - 22f, 32f, 32f)
+                            }
+                            if (shield > 0) {
+                                drawCircle(
+                                    Color(0x887EC8C4),
+                                    radius = shipPxSize * 0.62f,
+                                    center = Offset(dx, dy),
+                                    style = Stroke(width = 3f),
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                val dImg = when (deathFrame) {
+                    0 -> death1
+                    1 -> death2
+                    2 -> death3
+                    else -> death4
+                }
+                if (dImg != null) {
+                    drawImg(dImg, shipPx - shipPxSize / 2f, shipPy - shipPxSize / 2f, shipPxSize, shipPxSize)
+                } else {
+                    drawCircle(Color(0x88FF8A65), radius = 28f + deathFrame * 8f, center = Offset(shipPx, shipPy))
+                }
+            }
+
+            for (i in 0 until lives) {
+                if (heartImg != null) {
+                    drawImg(heartImg, 24f + i * 40f, 40f, 32f, 32f)
+                } else {
+                    drawCircle(Color(0xFFE57373), radius = 10f, center = Offset(40f + i * 40f, 52f))
+                }
+            }
+
+            if (!gameOver && !won && !paused) {
+                drawCircle(
+                    Color(0x22E8E4DC),
+                    radius = 64f,
+                    center = Offset(78f, sh - 96f),
+                    style = Stroke(width = 2f),
+                )
+                if (stickActive) {
+                    drawCircle(
+                        Color(0x33E8E4DC),
+                        radius = 72f,
+                        center = Offset(stickOx, stickOy),
+                        style = Stroke(width = 2f),
+                    )
+                    drawCircle(
+                        Color(0xA0C9A66B),
+                        radius = 24f,
+                        center = Offset(stickOx + stickX * 70f, stickOy + stickY * 70f),
+                    )
+                }
+                val fireCol = if (fireHeld) Color(0x557EC8C4) else Color(0x227EC8C4)
+                drawCircle(fireCol, radius = 42f, center = Offset(sw - 72f, sh - 96f))
+                drawCircle(
+                    Color(0x667EC8C4),
+                    radius = 42f,
+                    center = Offset(sw - 72f, sh - 96f),
+                    style = Stroke(width = 2f),
+                )
+            }
+        }
+
+        Box(
+            Modifier
                 .fillMaxSize()
                 .pointerInput(gameOver, won, paused) {
                     awaitPointerEventScope {
@@ -687,6 +893,7 @@ fun PlayScreen(onExit: () -> Unit) {
                                 stickId = null
                                 fireId = null
                                 stickActive = false
+                                thrusting = false
                                 fireHeld = false
                                 stickX = 0f
                                 stickY = 0f
@@ -705,7 +912,7 @@ fun PlayScreen(onExit: () -> Unit) {
                                                 stickId = change.id
                                             }
                                             stickActive = true
-                                            val maxR = 90f
+                                            val maxR = 88f
                                             val dx = (p.x - stickOx).coerceIn(-maxR, maxR)
                                             val dy = (p.y - stickOy).coerceIn(-maxR, maxR)
                                             stickX = dx / maxR
@@ -719,6 +926,7 @@ fun PlayScreen(onExit: () -> Unit) {
                                     if (change.id == stickId) {
                                         stickId = null
                                         stickActive = false
+                                        thrusting = false
                                         stickX = 0f
                                         stickY = 0f
                                     }
@@ -731,172 +939,7 @@ fun PlayScreen(onExit: () -> Unit) {
                         }
                     }
                 },
-        ) {
-            w = size.width
-            h = size.height
-
-            drawRect(Color(0xFF050510))
-
-            val viewCamX = camX - size.width / 2f
-            val viewCamY = camY - size.height / 2f
-            drawMirroredTiled(starFar, -viewCamX * 0.22f, -viewCamY * 0.22f, size.width, size.height)
-            drawMirroredTiled(starMid, -viewCamX * 0.48f, -viewCamY * 0.48f, size.width, size.height)
-            drawMirroredTiled(starNear, -viewCamX * 0.88f, -viewCamY * 0.88f, size.width, size.height)
-
-            translate(left = -viewCamX, top = -viewCamY) {
-                enemies.forEachIndexed { i, e ->
-                    val isLichtFrame = ((tick / 8 + i) % 2) == 0
-                    val (ew, eh, img) = when (e.kind) {
-                        EnemyKind.LANG -> Triple(
-                            enemyLangW,
-                            enemyLangH,
-                            if (isLichtFrame) schiffLangLicht else schiffLang,
-                        )
-                        EnemyKind.RUND -> Triple(
-                            enemyRundSize,
-                            enemyRundSize,
-                            if (isLichtFrame) schiffRundLicht else schiffRund,
-                        )
-                        EnemyKind.BIG -> Triple(bigPxSize, bigPxSize, enemyBig)
-                        EnemyKind.BASIC -> Triple(
-                            enemyPxSize,
-                            enemyPxSize,
-                            if (isLichtFrame) enemyImgB else enemyImg,
-                        )
-                    }
-                    rotate(degrees = e.angle, pivot = Offset(e.x, e.y)) {
-                        drawSpriteOrFallback(img, e.kind, e.x, e.y, ew, eh)
-                    }
-                }
-
-                bullets.forEach { b ->
-                    rotate(degrees = b.angle, pivot = Offset(b.x, b.y)) {
-                        val img = when {
-                            !b.fromPlayer -> bulletEnemy
-                            b.triple -> bulletTriple
-                            else -> bulletImg
-                        }
-                        if (img != null) {
-                            drawImg(img, b.x - bulletW / 2f, b.y - bulletH / 2f, bulletW, bulletH)
-                        } else {
-                            val col = if (b.fromPlayer) Color(0xFF7EC8C4) else Color(0xFFE57373)
-                            drawCircle(col, radius = 5f, center = Offset(b.x, b.y))
-                        }
-                    }
-                }
-
-                powerups.forEach { p ->
-                    val img = when (p.type) {
-                        0 -> puWeapon
-                        1 -> puHeal
-                        else -> puSpeed
-                    }
-                    if (img != null) {
-                        drawImg(img, p.x - 24f, p.y - 24f, 48f, 48f)
-                    } else {
-                        val col = when (p.type) {
-                            0 -> Color(0xFF7EC8C4)
-                            1 -> Color(0xFF81C784)
-                            else -> Color(0xFF90CAF9)
-                        }
-                        drawCircle(col, radius = 16f, center = Offset(p.x, p.y))
-                    }
-                }
-
-                fx.forEach { f ->
-                    val img = when (f.kind) {
-                        0 -> boom1
-                        1 -> boom2
-                        else -> boom3
-                    }
-                    if (img != null) {
-                        drawImg(img, f.x - 24f, f.y - 24f, 48f, 48f)
-                    } else {
-                        drawCircle(Color(0x88FFCC80), radius = 10f + f.life, center = Offset(f.x, f.y))
-                    }
-                }
-
-                if (!gameOver) {
-                    if (iFrames % 4 < 2) {
-                        rotate(degrees = shipAngle, pivot = Offset(shipPx, shipPy)) {
-                            val curShip = if (multishot > 0) shipTriple else shipSingle
-                            if (curShip != null) {
-                                drawImg(
-                                    curShip,
-                                    shipPx - shipPxSize / 2f,
-                                    shipPy - shipPxSize / 2f,
-                                    shipPxSize,
-                                    shipPxSize,
-                                )
-                            } else {
-                                drawPlayerFallback(shipPx, shipPy, shipPxSize, multishot > 0)
-                            }
-                            if (muzzleFlash > 0) {
-                                val mImg = if (muzzleFlash % 2 == 0) muzzle1 else muzzle2
-                                drawImg(mImg, shipPx - 16f, shipPy - shipPxSize / 2f - 20f, 32f, 32f)
-                            }
-                            if (shield > 0) {
-                                drawCircle(
-                                    Color(0x667EC8C4),
-                                    radius = shipPxSize * 0.62f,
-                                    center = Offset(shipPx, shipPy),
-                                    style = Stroke(width = 3f),
-                                )
-                            }
-                        }
-                    }
-                } else {
-                    val dImg = when (deathFrame) {
-                        0 -> death1
-                        1 -> death2
-                        2 -> death3
-                        else -> death4
-                    }
-                    if (dImg != null) {
-                        drawImg(dImg, shipPx - shipPxSize / 2f, shipPy - shipPxSize / 2f, shipPxSize, shipPxSize)
-                    } else {
-                        drawCircle(Color(0x88FF8A65), radius = 28f + deathFrame * 8f, center = Offset(shipPx, shipPy))
-                    }
-                }
-            }
-
-            for (i in 0 until lives) {
-                if (heartImg != null) {
-                    drawImg(heartImg, 24f + i * 40f, 40f, 32f, 32f)
-                } else {
-                    drawCircle(Color(0xFFE57373), radius = 10f, center = Offset(40f + i * 40f, 52f))
-                }
-            }
-
-            if (stickActive && !gameOver && !won) {
-                drawCircle(
-                    Color(0x33E8E4DC),
-                    radius = 70f,
-                    center = Offset(stickOx, stickOy),
-                    style = Stroke(width = 2f),
-                )
-                drawCircle(
-                    Color(0x88C9A66B),
-                    radius = 22f,
-                    center = Offset(stickOx + stickX * 70f, stickOy + stickY * 70f),
-                )
-            }
-
-            if (fireHeld && !gameOver && !won) {
-                drawCircle(
-                    Color(0x337EC8C4),
-                    radius = 36f,
-                    center = Offset(size.width - 70f, size.height - 90f),
-                )
-            } else if (!gameOver && !won) {
-                drawCircle(
-                    Color(0x227EC8C4),
-                    radius = 34f,
-                    center = Offset(size.width - 70f, size.height - 90f),
-                    style = Stroke(width = 2f),
-                )
-            }
-        }
+        )
 
         Column(
             modifier = Modifier
@@ -906,6 +949,7 @@ fun PlayScreen(onExit: () -> Unit) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column {
                     Text(
@@ -932,18 +976,6 @@ fun PlayScreen(onExit: () -> Unit) {
                 fontSize = 12.sp,
                 fontFamily = FontFamily.Monospace,
                 modifier = Modifier.padding(top = 6.dp),
-            )
-        }
-
-        if (!gameOver && !won && !paused) {
-            Text(
-                "LINKS  drehen + schub\nRECHTS halten  feuern",
-                color = Color(0x66E8E4DC),
-                fontSize = 11.sp,
-                fontFamily = FontFamily.Monospace,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = 18.dp, bottom = 28.dp),
             )
         }
 
@@ -1026,11 +1058,4 @@ private fun OverlayCard(
             }
         }
     }
-}
-
-private fun shortest(a: Float, b: Float, world: Float): Float {
-    var d = a - b
-    if (d > world * 0.5f) d -= world
-    if (d < -world * 0.5f) d += world
-    return d
 }
