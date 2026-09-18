@@ -89,10 +89,6 @@ private class GameSfx(context: Context) {
 }
 
 
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 
 fun DrawScope.drawImg(img: ImageBitmap?, x: Float, y: Float, w: Float, h: Float) {
     if (img != null) {
