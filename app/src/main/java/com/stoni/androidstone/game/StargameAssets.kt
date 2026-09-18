@@ -7,30 +7,37 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 
 /**
- * Lädt freigestellte PNGs aus assets/stargame/
- * und stellt sicher, dass der Alpha-Kanal (Transparenz) aktiv bleibt.
+ * Loads a PNG from assets. Tries `stargame/$name` first, then `$name` at the
+ * assets root (LANG/RUND ships live there). Returns null instead of crashing
+ * so the renderer can draw a geometry fallback.
  */
-fun loadStargameAsset(context: Context, name: String): ImageBitmap {
+fun loadStargameAssetOrNull(context: Context, name: String): ImageBitmap? {
     val opts = BitmapFactory.Options().apply {
         inPreferredConfig = Bitmap.Config.ARGB_8888
         inScaled = false
-        inPremultiplied = true // Garantiert korrekte Transparenz-Berechnung
+        inPremultiplied = true
     }
-
-    val stream = context.assets.open("stargame/$name")
-    val bmp = stream.use {
-        BitmapFactory.decodeStream(it, null, opts)
-    } ?: error("Asset stargame/$name konnte nicht dekodiert werden")
-
-    // Sicherstellen, dass es ein bearbeitbares ARGB_8888 Bitmap mit Transparenz ist
-    val transparentBitmap = if (bmp.config != Bitmap.Config.ARGB_8888) {
-        bmp.copy(Bitmap.Config.ARGB_8888, true).also { if (it !== bmp) bmp.recycle() }
-    } else {
-        bmp
+    val candidates = listOf("stargame/$name", name)
+    for (path in candidates) {
+        try {
+            context.assets.open(path).use { stream ->
+                val bmp = BitmapFactory.decodeStream(stream, null, opts) ?: return@use
+                val argb = if (bmp.config != Bitmap.Config.ARGB_8888) {
+                    bmp.copy(Bitmap.Config.ARGB_8888, true).also { if (it !== bmp) bmp.recycle() }
+                } else {
+                    bmp
+                }
+                argb.setHasAlpha(true)
+                return argb.asImageBitmap()
+            }
+        } catch (_: Exception) {
+            // try next path
+        }
     }
+    return null
+}
 
-    // Transparenz für den Canvas-Renderer explizit aktivieren
-    transparentBitmap.setHasAlpha(true)
-
-    return transparentBitmap.asImageBitmap()
+fun loadStargameAsset(context: Context, name: String): ImageBitmap {
+    return loadStargameAssetOrNull(context, name)
+        ?: error("Asset $name konnte nicht geladen werden (stargame/ und assets-root)")
 }
