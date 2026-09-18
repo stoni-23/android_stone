@@ -88,6 +88,44 @@ private class GameSfx(context: Context) {
     fun release() { pool.release() }
 }
 
+
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+
+fun DrawScope.drawImg(img: ImageBitmap?, x: Float, y: Float, w: Float, h: Float) {
+    if (img != null) {
+        drawImage(
+            image = img,
+            dstOffset = IntOffset(x.toInt(), y.toInt()),
+            dstSize = IntSize(w.toInt(), h.toInt())
+        )
+    }
+}
+
+fun DrawScope.drawMirroredTiled(img: ImageBitmap?, offX: Float, offY: Float, w: Float, h: Float) {
+    if (img == null) return
+    val iw = img.width.toFloat()
+    val ih = img.height.toFloat()
+    if (iw <= 0f || ih <= 0f) return
+    val startX = (offX % iw) - iw
+    val startY = (offY % ih) - ih
+    var curY = startY
+    while (curY < h + ih) {
+        var curX = startX
+        while (curX < w + iw) {
+            drawImage(
+                image = img,
+                dstOffset = IntOffset(curX.toInt(), curY.toInt()),
+                dstSize = IntSize(iw.toInt(), ih.toInt())
+            )
+            curX += iw
+        }
+        curY += ih
+    }
+}
+
 @Composable
 fun PlayScreen(onExit: () -> Unit) {
     val context = LocalContext.current
