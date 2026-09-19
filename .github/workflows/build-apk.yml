@@ -5,6 +5,9 @@ on:
     branches: [ main, master ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,8 +29,30 @@ jobs:
       - name: Build APK
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/*.apk dist/stargame-debug.apk
+          ls -lh dist/stargame-debug.apk
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: dist/stargame-debug.apk
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Stargame APK
+          files: dist/stargame-debug.apk
+          fail_on_unmatched_files: true
+          make_latest: true
+          body: |
+            Debug-APK zum direkten Installieren auf dem Handy.
+
+            **Steuerung:** Links schieben = drehen + fliegen. Rechts halten = feuern.
+
+            Direkter Download: https://github.com/stoni-23/android_stone/releases/latest/download/stargame-debug.apk
