@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -70,9 +71,9 @@ import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
 
-/** Large portrait map with toroidal wrap (no walls). */
-private const val WORLD_W = 8000f
-private const val WORLD_H = 12000f
+/** Large portrait arena with toroidal wrap (no walls). Size divisible by 2×500 star tiles. */
+private const val WORLD_W = 10000f
+private const val WORLD_H = 14000f
 
 private fun wrapCoord(v: Float, size: Float): Float = ((v % size) + size) % size
 
@@ -374,11 +375,14 @@ fun PlayScreen(onExit: () -> Unit) {
                     var diff = (targetAngle - shipAngle) % 360f
                     if (diff > 180f) diff -= 360f
                     if (diff < -180f) diff += 360f
-                    shipAngle += diff * 0.28f
+                    // Nose leads motion — turn fast enough that thrust stays nose-first
+                    shipAngle += diff * 0.50f
 
+                    // Thrust along facing (tip-up hull: shipAngle 0 = tip toward -Y)
                     val thrust = (if (speedBoost > 0) 1.35f else 1.0f) * strength
-                    shipVx += nx * thrust
-                    shipVy += ny * thrust
+                    val rad = (shipAngle - 90f) * (PI / 180.0)
+                    shipVx += (cos(rad) * thrust).toFloat()
+                    shipVy += (sin(rad) * thrust).toFloat()
                 }
             }
 
@@ -851,14 +855,13 @@ fun PlayScreen(onExit: () -> Unit) {
             val toSx = { wx: Float -> wrapDelta(wx - camX, WORLD_W) + size.width / 2f }
             val toSy = { wy: Float -> wrapDelta(wy - camY, WORLD_H) + size.height / 2f }
 
-            // One continuous playfield BG: same-orientation star tiles forever, one nebula, no debris/slideshow.
-            drawSeamlessTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
+            // Deep-space arena: sparse large stars + soft nebula, mirror→normal tiling (seamless edges).
+            drawSeamlessTiledMirrored(starFar, bgOffsetX * 0.22f, bgOffsetY * 0.22f, w, h)
             bgNebula?.let {
-                // Single soft oversized layer — same orientation only, never swaps assets
-                drawSeamlessTiled(it, bgOffsetX * 0.12f, bgOffsetY * 0.12f, w, h, alpha = 0.28f, tileScale = 1.75f)
+                drawSeamlessTiledMirrored(it, bgOffsetX * 0.10f, bgOffsetY * 0.10f, w, h, alpha = 0.32f, tileScale = 1.6f)
             }
-            drawSeamlessTiled(starMid, bgOffsetX * 0.50f, bgOffsetY * 0.50f, w, h)
-            drawSeamlessTiled(starNear, bgOffsetX * 0.90f, bgOffsetY * 0.90f, w, h)
+            drawSeamlessTiledMirrored(starMid, bgOffsetX * 0.45f, bgOffsetY * 0.45f, w, h)
+            drawSeamlessTiledMirrored(starNear, bgOffsetX * 0.85f, bgOffsetY * 0.85f, w, h)
 
             val half = shipPxSize / 2f
 
@@ -1377,6 +1380,20 @@ fun PlayScreen(onExit: () -> Unit) {
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
+            // Arena minimap — bottom-right, live player + nearby enemies
+            if (!gameOver) {
+                ArenaMinimap(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(end = 4.dp, bottom = 8.dp),
+                    shipX = shipPx,
+                    shipY = shipPy,
+                    enemies = enemies,
+                    worldW = WORLD_W,
+                    worldH = WORLD_H
+                )
+            }
+
             if (gameOver) {
                 TextButton(
                     onClick = onExit,
@@ -1395,6 +1412,93 @@ fun PlayScreen(onExit: () -> Unit) {
                         )
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArenaMinimap(
+    modifier: Modifier = Modifier,
+    shipX: Float,
+    shipY: Float,
+    enemies: List<Enemy>,
+    worldW: Float,
+    worldH: Float
+) {
+    val mapDp = 112.dp
+    Column(modifier = modifier, horizontalAlignment = Alignment.End) {
+        Text(
+            "Arena",
+            color = Color.White.copy(alpha = 0.45f),
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = FontFamily.SansSerif,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium
+            ),
+            modifier = Modifier.padding(end = 6.dp, bottom = 2.dp)
+        )
+        Box(
+            modifier = Modifier
+                .size(mapDp)
+                .background(Color(0xCC050510), RoundedCornerShape(12.dp))
+                .padding(6.dp)
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                val pad = 3f
+                val aw = size.width - pad * 2f
+                val ah = size.height - pad * 2f
+                // Dim arena rect (portrait aspect)
+                val aspect = worldW / worldH
+                val rw: Float
+                val rh: Float
+                if (aw / ah > aspect) {
+                    rh = ah
+                    rw = ah * aspect
+                } else {
+                    rw = aw
+                    rh = aw / aspect
+                }
+                val left = (size.width - rw) / 2f
+                val top = (size.height - rh) / 2f
+                drawRoundRect(
+                    color = Color(0xFF12122A),
+                    topLeft = Offset(left, top),
+                    size = Size(rw, rh),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
+                )
+                drawRoundRect(
+                    color = Color(0x334FC3F7),
+                    topLeft = Offset(left, top),
+                    size = Size(rw, rh),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+                    style = Stroke(width = 1.5f)
+                )
+                // Wrap-edge hint (soft border dashes feel)
+                drawRect(
+                    color = Color(0x22FFFFFF),
+                    topLeft = Offset(left + 1f, top + 1f),
+                    size = Size(rw - 2f, rh - 2f),
+                    style = Stroke(width = 1f)
+                )
+                fun toMx(wx: Float) = left + (wx / worldW) * rw
+                fun toMy(wy: Float) = top + (wy / worldH) * rh
+                // Nearby enemies as dots (all alive — arena overview)
+                enemies.forEach { e ->
+                    val ex = toMx(e.x)
+                    val ey = toMy(e.y)
+                    val col = when {
+                        e.type.isBossLike() -> Color(0xFFE040FB)
+                        else -> Color(0xFFFF8A65)
+                    }
+                    drawCircle(col.copy(alpha = 0.85f), radius = if (e.type.isBossLike()) 3.2f else 2.0f, center = Offset(ex, ey))
+                }
+                // Player blip
+                val px = toMx(shipX)
+                val py = toMy(shipY)
+                drawCircle(Color(0xFF00E5FF).copy(alpha = 0.35f), radius = 6f, center = Offset(px, py))
+                drawCircle(Color(0xFF00E5FF), radius = 3.2f, center = Offset(px, py))
+                drawCircle(Color.White, radius = 1.4f, center = Offset(px, py))
             }
         }
     }
@@ -1486,11 +1590,11 @@ private fun DrawScope.drawSpriteOrOval(img: ImageBitmap?, cx: Float, cy: Float, 
 }
 
 /**
- * Endless same-orientation tiling (NO flipX/flipY mirrors / kaleidoscope).
- * Tiles at **native bitmap size** (× tileScale) — never stretch one tile to the full
- * screen, which caused visible wrap jumps ("map wiederholt sich mit Sprung").
+ * Seamless mirror tiling: tile (i,j) uses scale(±1,±1) from i%2 / j%2
+ * (mirror → normal → mirror → …). Shared edges always match. Native bitmap
+ * size (× tileScale) — never stretch one tile to the full screen (avoids jumps).
  */
-private fun DrawScope.drawSeamlessTiled(
+private fun DrawScope.drawSeamlessTiledMirrored(
     img: ImageBitmap,
     offX: Float,
     offY: Float,
@@ -1502,18 +1606,21 @@ private fun DrawScope.drawSeamlessTiled(
     val tw = img.width.toFloat() * tileScale
     val th = img.height.toFloat() * tileScale
     if (tw < 1f || th < 1f) return
-    val ox = ((offX % tw) + tw) % tw
-    val oy = ((offY % th) + th) % th
-    // 1px overlap hides IntOffset truncation hairlines between native tiles
     val pad = 1f
-    var y = -oy
-    while (y < sh) {
-        var x = -ox
-        while (x < sw) {
-            drawImg(img, x - pad, y - pad, tw + pad * 2f, th + pad * 2f, alpha)
-            x += tw
+    val startCol = floor(-offX / tw).toInt() - 1
+    val endCol = ceil((sw - offX) / tw).toInt() + 1
+    val startRow = floor(-offY / th).toInt() - 1
+    val endRow = ceil((sh - offY) / th).toInt() + 1
+    for (col in startCol..endCol) {
+        for (row in startRow..endRow) {
+            val posX = offX + col * tw
+            val posY = offY + row * th
+            val flipX = if (col % 2 != 0) -1f else 1f
+            val flipY = if (row % 2 != 0) -1f else 1f
+            scale(scaleX = flipX, scaleY = flipY, pivot = Offset(posX + tw / 2f, posY + th / 2f)) {
+                drawImg(img, posX - pad, posY - pad, tw + pad * 2f, th + pad * 2f, alpha)
+            }
         }
-        y += th
     }
 }
 
