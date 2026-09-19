@@ -185,7 +185,6 @@ fun PlayScreen(onExit: () -> Unit) {
     val starMid = remember { loadStargameAsset(context, "bg_stars_mid.png") }
     val starNear = remember { loadStargameAsset(context, "bg_stars_near.png") }
     val bgNebula = remember { loadStargameAssetOrNull(context, "bg_nebula.png") }
-    val bgDebris = remember { loadStargameAssetOrNull(context, "bg_debris.png") }
     val kometImg = remember { loadStargameAssetOrNull(context, "enemy_komet_64.png") }
     val kometLicht = remember { loadStargameAssetOrNull(context, "enemy_komet_licht_64.png") }
     val kometImg128 = remember { loadStargameAssetOrNull(context, "enemy_komet_128.png") }
@@ -704,18 +703,14 @@ fun PlayScreen(onExit: () -> Unit) {
             val toSx = { wx: Float -> wrapDelta(wx - camX, WORLD_W) + size.width / 2f }
             val toSy = { wy: Float -> wrapDelta(wy - camY, WORLD_H) + size.height / 2f }
 
+            // One continuous playfield BG: same-orientation star tiles forever, one nebula, no debris/slideshow.
             drawSeamlessTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
-            // Nebula: 1–2 large soft cover layers (no small-tile grid seams)
             bgNebula?.let {
-                drawSoftCoverLayer(it, bgOffsetX, bgOffsetY, w, h, coverScale = 1.85f, alpha = 0.32f, parallax = 0.12f)
-                drawSoftCoverLayer(it, bgOffsetX + w * 0.18f, bgOffsetY - h * 0.12f, w, h, coverScale = 2.35f, alpha = 0.22f, parallax = 0.07f)
+                // Single soft oversized layer — same orientation only, never swaps assets
+                drawSeamlessTiled(it, bgOffsetX * 0.12f, bgOffsetY * 0.12f, w, h, alpha = 0.28f, tileScale = 1.75f)
             }
             drawSeamlessTiled(starMid, bgOffsetX * 0.50f, bgOffsetY * 0.50f, w, h)
             drawSeamlessTiled(starNear, bgOffsetX * 0.90f, bgOffsetY * 0.90f, w, h)
-            // Debris: sparse soft layer, low alpha — avoid dense asteroid wallpaper
-            bgDebris?.let {
-                drawSoftCoverLayer(it, bgOffsetX, bgOffsetY, w, h, coverScale = 1.55f, alpha = 0.18f, parallax = 0.40f)
-            }
 
             val half = shipPxSize / 2f
 
@@ -1057,48 +1052,29 @@ private fun DrawScope.drawSpriteOrOval(img: ImageBitmap?, cx: Float, cy: Float, 
     }
 }
 
-/** One oversized soft layer with slow parallax drift — no tiling grid seams. */
-private fun DrawScope.drawSoftCoverLayer(
-    img: ImageBitmap,
-    offX: Float,
-    offY: Float,
-    sw: Float,
-    sh: Float,
-    coverScale: Float = 1.6f,
-    alpha: Float = 0.32f,
-    parallax: Float = 0.15f
-) {
-    val dw = sw * coverScale
-    val dh = sh * coverScale
-    val spanX = dw * 0.28f
-    val spanY = dh * 0.28f
-    val rawX = offX * parallax
-    val rawY = offY * parallax
-    val driftX = ((rawX % spanX) + spanX) % spanX - spanX * 0.5f
-    val driftY = ((rawY % spanY) + spanY) % spanY - spanY * 0.5f
-    val x = (sw - dw) * 0.5f + driftX
-    val y = (sh - dh) * 0.5f + driftY
-    drawImg(img, x, y, dw, dh, alpha)
-}
-
-/** Positive-modulo tile with 2px overlap — no mirror seams. */
+/**
+ * Endless same-orientation tiling (NO flipX/flipY mirrors / kaleidoscope).
+ * tileScale > 1 draws larger tiles (soft nebula) while keeping one continuous look.
+ */
 private fun DrawScope.drawSeamlessTiled(
     img: ImageBitmap,
     offX: Float,
     offY: Float,
     sw: Float,
     sh: Float,
-    alpha: Float = 1f
+    alpha: Float = 1f,
+    tileScale: Float = 1f
 ) {
     val overlap = 2f
-    val tw = sw
-    val th = sh
+    val tw = sw * tileScale
+    val th = sh * tileScale
     val ox = ((offX % tw) + tw) % tw
     val oy = ((offY % th) + th) % th
     var y = oy - th
     while (y < sh + overlap) {
         var x = ox - tw
         while (x < sw + overlap) {
+            // Always same orientation — never scale(-1f) mirror seams
             drawImg(img, x - overlap * 0.5f, y - overlap * 0.5f, tw + overlap, th + overlap, alpha)
             x += tw
         }
