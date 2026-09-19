@@ -169,6 +169,14 @@ fun PlayScreen(onExit: () -> Unit) {
             loadStargameAsset(context, "fx_thrust_4_48.png"),
         )
     }
+    val thrustFrames64 = remember {
+        listOf(
+            loadStargameAsset(context, "fx_thrust_1_64.png"),
+            loadStargameAsset(context, "fx_thrust_2_64.png"),
+            loadStargameAsset(context, "fx_thrust_3_64.png"),
+            loadStargameAsset(context, "fx_thrust_4_64.png"),
+        )
+    }
 
     val bulletImg = remember { loadStargameAsset(context, "bullet_player.png") }
     val bulletTriple = remember { loadStargameAsset(context, "bullet_player_triple.png") }
@@ -437,7 +445,7 @@ fun PlayScreen(onExit: () -> Unit) {
                 }
             } else if (!isBossActive && !awaitingBoss) {
                 if (spawnCd > 0) spawnCd-- else if (spawned < enemiesPerWave) {
-                    spawnCd = max(22, 72 - wave * 3)
+                    spawnCd = max(16, 58 - wave * 3)
                     val spawnAngle = Random.nextFloat() * 2f * PI.toFloat()
                     val spawnDist = max(sw, sh) * 0.75f + 80f
                     val (ex, ey) = wrapWorld(
@@ -445,29 +453,36 @@ fun PlayScreen(onExit: () -> Unit) {
                         shipPy + sin(spawnAngle) * spawnDist,
                     )
 
-                    // All PNG types; stoerer+lang+rund often; ASTEROID~15% KOMET~8%
+                    // Busier mix: more SWARMER packs / JAEGER / SCOUT; KOMET less wallpaper
                     val r = Random.nextFloat()
                     val type = when {
-                        r < 0.15f -> EnemyType.ASTEROID
-                        r < 0.23f -> EnemyType.KOMET
-                        wave >= 3 && r < 0.31f ->
+                        r < 0.08f -> EnemyType.ASTEROID
+                        r < 0.12f -> EnemyType.KOMET
+                        wave >= 3 && r < 0.18f ->
                             if (Random.nextBoolean()) EnemyType.MINE else EnemyType.FELS
-                        wave >= 2 && r < 0.40f -> EnemyType.TANK
-                        r < 0.52f -> EnemyType.SWARMER
-                        r < 0.64f -> EnemyType.LANG
-                        r < 0.74f -> EnemyType.RUND
-                        wave >= 2 && r < 0.86f -> EnemyType.JAEGER
+                        wave >= 2 && r < 0.24f -> EnemyType.TANK
+                        r < 0.42f -> EnemyType.SWARMER
+                        r < 0.54f -> EnemyType.LANG
+                        r < 0.64f -> EnemyType.RUND
+                        wave >= 2 && r < 0.82f -> EnemyType.JAEGER
                         else -> EnemyType.SCOUT
                     }
 
-                    enemies += Enemy(
-                        x = ex, y = ey,
-                        hp = type.maxHp + (wave - 1) / 2,
-                        maxHp = type.maxHp + (wave - 1) / 2,
-                        fireCd = 45 + Random.nextInt(35),
-                        type = type
-                    )
-                    spawned++
+                    val pack = if (type == EnemyType.SWARMER) 2 + Random.nextInt(3) else 1
+                    repeat(pack) { j ->
+                        if (spawned >= enemiesPerWave) return@repeat
+                        val ox = if (j == 0) 0f else (Random.nextFloat() - 0.5f) * 90f
+                        val oy = if (j == 0) 0f else (Random.nextFloat() - 0.5f) * 90f
+                        val (px, py) = wrapWorld(ex + ox, ey + oy)
+                        enemies += Enemy(
+                            x = px, y = py,
+                            hp = type.maxHp + (wave - 1) / 2,
+                            maxHp = type.maxHp + (wave - 1) / 2,
+                            fireCd = 45 + Random.nextInt(35),
+                            type = type
+                        )
+                        spawned++
+                    }
                 } else if (enemies.isEmpty() && bullets.none { !it.fromPlayer }) {
                     if (wave % 4 == 0) {
                         awaitingBoss = true
@@ -707,105 +722,130 @@ fun PlayScreen(onExit: () -> Unit) {
             enemies.forEachIndexed { i, e ->
                 val sx = toSx(e.x)
                 val sy = toSy(e.y)
-                rotate(degrees = e.angle, pivot = Offset(sx, sy)) {
-                    when (e.type) {
-                        EnemyType.SWARMER -> {
-                            drawImg(
-                                enemySwarmer,
-                                sx - swarmerPxSize / 2f,
-                                sy - swarmerPxSize / 2f,
-                                swarmerPxSize,
-                                swarmerPxSize
-                            )
+                when (e.type) {
+                    EnemyType.KOMET -> {
+                        // Travel toward player; trail opposite motion (flame behind)
+                        val edx = wrapDx(shipPx, e.x)
+                        val edy = wrapDy(shipPy, e.y)
+                        val heading = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
+                        val tf = thrustFrames[(tick / 2 + i) % thrustFrames.size]
+                        rotate(degrees = heading, pivot = Offset(sx, sy)) {
+                            val tw = enemyPxSize * 0.78f
+                            val th = enemyPxSize * 0.95f
+                            drawImg(tf, sx - tw / 2f, sy + enemyPxSize * 0.18f, tw, th)
                         }
-                        EnemyType.SCOUT -> {
-                            val img = if ((tick / 12 + i) % 2 == 0) enemyImg else enemyImgB
-                            drawImg(img, sx - enemyPxSize / 2f, sy - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
+                        // Smaller tumbling core + subtle licht glow (baked PNG flame secondary)
+                        rotate(degrees = e.angle, pivot = Offset(sx, sy)) {
+                            val glow = (tick / 10 + i) % 5 == 0
+                            val body = if (glow) (kometLicht ?: kometImg) else kometImg
+                            drawSpriteOrOval(body, sx, sy, enemyPxSize * 0.70f, e.type.color)
                         }
-                        EnemyType.LANG -> {
-                            val blink = (tick / 12 + i) % 2 == 0
-                            val img = if (blink) schiffLang else schiffLangLicht
-                            drawImg(img, sx - enemyLangW / 2f, sy - enemyLangH / 2f, enemyLangW, enemyLangH)
+                    }
+                    EnemyType.KOMET_BIG -> {
+                        val edx = wrapDx(shipPx, e.x)
+                        val edy = wrapDy(shipPy, e.y)
+                        val heading = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
+                        val tf = thrustFrames64[(tick / 2 + i) % thrustFrames64.size]
+                        rotate(degrees = heading, pivot = Offset(sx, sy)) {
+                            val tw = bossPxSize * 0.85f
+                            val th = bossPxSize * 1.05f
+                            drawImg(tf, sx - tw / 2f, sy + bossPxSize * 0.22f, tw, th)
                         }
-                        EnemyType.RUND -> {
-                            val blink = (tick / 12 + i) % 2 == 0
-                            val img = if (blink) schiffRund else schiffRundLicht
-                            drawImg(img, sx - enemyRundSize / 2f, sy - enemyRundSize / 2f, enemyRundSize, enemyRundSize)
-                        }
-                        EnemyType.TANK -> {
-                            drawImg(enemyTank, sx - tankPxSize / 2f, sy - tankPxSize / 2f, tankPxSize, tankPxSize)
-                            drawCircle(
-                                e.type.color.copy(alpha = 0.35f),
-                                tankPxSize * 0.42f,
-                                Offset(sx, sy),
-                                style = Stroke(width = 3f)
-                            )
-                        }
-                        EnemyType.BOSS -> {
-                            drawImg(enemyBig, sx - bossPxSize / 2f, sy - bossPxSize / 2f, bossPxSize, bossPxSize)
-                            drawCircle(
-                                e.type.color.copy(alpha = 0.55f),
-                                bossPxSize * 0.48f,
-                                Offset(sx, sy),
-                                style = Stroke(width = 4f)
-                            )
-                            drawCircle(Color.White.copy(alpha = 0.4f), bossPxSize * 0.12f, Offset(sx, sy))
-                        }
-                        EnemyType.KOMET -> {
-                            val blink = (tick / 12 + i) % 2 == 0
-                            val useBig = (tick / 24 + i) % 3 == 0
-                            val img = when {
-                                useBig && blink -> kometImg128 ?: kometImg
-                                useBig -> kometLicht128 ?: kometLicht ?: kometImg
-                                blink -> kometImg
-                                else -> kometLicht ?: kometImg
+                        rotate(degrees = e.angle, pivot = Offset(sx, sy)) {
+                            val glow = (tick / 10 + i) % 5 == 0
+                            val body = when {
+                                glow -> kometLicht128 ?: kometBigImg
+                                else -> kometBigImg ?: kometImg128
                             }
-                            val sz = if (useBig) enemyPxSize * 1.25f else enemyPxSize
-                            drawSpriteOrOval(img, sx, sy, sz, e.type.color)
-                        }
-                        EnemyType.KOMET_BIG -> {
-                            drawSpriteOrOval(kometBigImg, sx, sy, bossPxSize, e.type.color)
+                            drawSpriteOrOval(body, sx, sy, bossPxSize * 0.78f, e.type.color)
                             drawCircle(
                                 e.type.color.copy(alpha = 0.45f),
-                                bossPxSize * 0.48f,
+                                bossPxSize * 0.42f,
                                 Offset(sx, sy),
                                 style = Stroke(width = 4f)
                             )
                         }
-                        EnemyType.ASTEROID -> {
-                            val phase = (tick / 12 + i) % 3
-                            val img = when (phase) {
-                                0 -> asteroidImg
-                                1 -> asteroidImgB ?: asteroidImg
-                                else -> asteroidImg80 ?: asteroidImg
+                    }
+                    else -> rotate(degrees = e.angle, pivot = Offset(sx, sy)) {
+                        when (e.type) {
+                            EnemyType.SWARMER -> {
+                                drawImg(
+                                    enemySwarmer,
+                                    sx - swarmerPxSize / 2f,
+                                    sy - swarmerPxSize / 2f,
+                                    swarmerPxSize,
+                                    swarmerPxSize
+                                )
                             }
-                            val sz = if (phase == 2) enemyPxSize * 1.15f else enemyPxSize
-                            drawSpriteOrOval(img, sx, sy, sz, e.type.color)
-                        }
-                        EnemyType.FELS -> {
-                            drawSpriteOrOval(felsImg, sx, sy, tankPxSize, e.type.color)
-                            drawCircle(
-                                e.type.color.copy(alpha = 0.30f),
-                                tankPxSize * 0.42f,
-                                Offset(sx, sy),
-                                style = Stroke(width = 3f)
-                            )
-                        }
-                        EnemyType.JAEGER -> {
-                            val blink = (tick / 12 + i) % 2 == 0
-                            val img = when {
-                                blink -> jaegerImg80 ?: jaegerImg
-                                else -> jaegerLicht ?: jaegerImg
+                            EnemyType.SCOUT -> {
+                                val img = if ((tick / 12 + i) % 2 == 0) enemyImg else enemyImgB
+                                drawImg(img, sx - enemyPxSize / 2f, sy - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
                             }
-                            drawSpriteOrOval(img, sx, sy, enemyPxSize * 1.1f, e.type.color)
-                        }
-                        EnemyType.MINE -> {
-                            val blink = (tick / 12 + i) % 2 == 0
-                            val img = when {
-                                blink -> mineImg80 ?: mineImg
-                                else -> mineLicht ?: mineImg
+                            EnemyType.LANG -> {
+                                val blink = (tick / 12 + i) % 2 == 0
+                                val img = if (blink) schiffLang else schiffLangLicht
+                                drawImg(img, sx - enemyLangW / 2f, sy - enemyLangH / 2f, enemyLangW, enemyLangH)
                             }
-                            drawSpriteOrOval(img, sx, sy, enemyPxSize * 0.95f, e.type.color)
+                            EnemyType.RUND -> {
+                                val blink = (tick / 12 + i) % 2 == 0
+                                val img = if (blink) schiffRund else schiffRundLicht
+                                drawImg(img, sx - enemyRundSize / 2f, sy - enemyRundSize / 2f, enemyRundSize, enemyRundSize)
+                            }
+                            EnemyType.TANK -> {
+                                drawImg(enemyTank, sx - tankPxSize / 2f, sy - tankPxSize / 2f, tankPxSize, tankPxSize)
+                                drawCircle(
+                                    e.type.color.copy(alpha = 0.35f),
+                                    tankPxSize * 0.42f,
+                                    Offset(sx, sy),
+                                    style = Stroke(width = 3f)
+                                )
+                            }
+                            EnemyType.BOSS -> {
+                                drawImg(enemyBig, sx - bossPxSize / 2f, sy - bossPxSize / 2f, bossPxSize, bossPxSize)
+                                drawCircle(
+                                    e.type.color.copy(alpha = 0.55f),
+                                    bossPxSize * 0.48f,
+                                    Offset(sx, sy),
+                                    style = Stroke(width = 4f)
+                                )
+                                drawCircle(Color.White.copy(alpha = 0.4f), bossPxSize * 0.12f, Offset(sx, sy))
+                            }
+                            EnemyType.ASTEROID -> {
+                                val phase = (tick / 12 + i) % 3
+                                val img = when (phase) {
+                                    0 -> asteroidImg
+                                    1 -> asteroidImgB ?: asteroidImg
+                                    else -> asteroidImg80 ?: asteroidImg
+                                }
+                                val sz = if (phase == 2) enemyPxSize * 1.15f else enemyPxSize
+                                drawSpriteOrOval(img, sx, sy, sz, e.type.color)
+                            }
+                            EnemyType.FELS -> {
+                                drawSpriteOrOval(felsImg, sx, sy, tankPxSize, e.type.color)
+                                drawCircle(
+                                    e.type.color.copy(alpha = 0.30f),
+                                    tankPxSize * 0.42f,
+                                    Offset(sx, sy),
+                                    style = Stroke(width = 3f)
+                                )
+                            }
+                            EnemyType.JAEGER -> {
+                                val blink = (tick / 12 + i) % 2 == 0
+                                val img = when {
+                                    blink -> jaegerImg80 ?: jaegerImg
+                                    else -> jaegerLicht ?: jaegerImg
+                                }
+                                drawSpriteOrOval(img, sx, sy, enemyPxSize * 1.1f, e.type.color)
+                            }
+                            EnemyType.MINE -> {
+                                val blink = (tick / 12 + i) % 2 == 0
+                                val img = when {
+                                    blink -> mineImg80 ?: mineImg
+                                    else -> mineLicht ?: mineImg
+                                }
+                                drawSpriteOrOval(img, sx, sy, enemyPxSize * 0.95f, e.type.color)
+                            }
+                            EnemyType.KOMET, EnemyType.KOMET_BIG -> Unit
                         }
                     }
                 }
@@ -880,7 +920,7 @@ fun PlayScreen(onExit: () -> Unit) {
                 rotate(degrees = shipAngle, pivot = Offset(shipSx, shipSy)) {
                     val thrusting = isTouching || hypot(shipVx, shipVy) > 1.2f
                     if (thrusting) {
-                        val tf = thrustFrames[(tick / 3) % thrustFrames.size]
+                        val tf = thrustFrames[((tick / 2) % thrustFrames.size).coerceAtLeast(0)]
                         // Clear animated thrust at rear/mouth (~0.7–0.9 ship width), under hull
                         val tw = shipPxSize * 0.82f
                         val th = shipPxSize * 0.95f
