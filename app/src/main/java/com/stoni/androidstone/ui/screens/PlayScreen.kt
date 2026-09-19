@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -55,7 +56,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -419,21 +419,34 @@ fun PlayScreen(onExit: () -> Unit) {
             shipPx = wrapCoord(shipPx, WORLD_W)
             shipPy = wrapCoord(shipPy, WORLD_H)
 
-            // Soft continuous camera (wrapDelta) — no dead-zone snap across torus wrap.
-            // Ship sits ~58% screen height (lower/centered); mild velocity look-ahead.
-            val shipScreenYFrac = 0.58f
-            val biasY = (shipScreenYFrac - 0.5f) * sh
-            val lookT = 9f
-            val targetCamX = shipPx + shipVx * lookT
-            val targetCamY = shipPy + shipVy * lookT - biasY
-            val cdx = wrapDelta(targetCamX - camX, WORLD_W)
-            val cdy = wrapDelta(targetCamY - camY, WORLD_H)
-            val follow = 0.13f
-            camX = wrapCoord(camX + cdx * follow, WORLD_W)
-            camY = wrapCoord(camY + cdy * follow, WORLD_H)
+            // Soft dead-zone camera (wrapDelta): ship drifts on screen inside margins;
+            // cam only catches up outside the zone — no glued-to-center feel, no mid-map snap.
+            // Prefer ship slightly below screen center (~58% Y).
+            val preferY = (0.58f - 0.5f) * sh
+            val dx = wrapDelta(shipPx - camX, WORLD_W)
+            val dy = wrapDelta(shipPy - preferY - camY, WORLD_H)
+            val marginX = sw * 0.30f
+            val marginY = sh * 0.28f
+            val adjDx = when {
+                dx < -marginX -> dx + marginX
+                dx > marginX -> dx - marginX
+                else -> 0f
+            }
+            val adjDy = when {
+                dy < -marginY -> dy + marginY
+                dy > marginY -> dy - marginY
+                else -> 0f
+            }
+            val follow = 0.18f
+            val moveX = adjDx * follow
+            val moveY = adjDy * follow
+            camX = wrapCoord(camX + moveX, WORLD_W)
+            camY = wrapCoord(camY + moveY, WORLD_H)
 
-            bgOffsetX = -camX
-            bgOffsetY = -camY
+            // Continuous parallax scroll: accumulate cam motion only — never assign -camX
+            // (world wrap would jump by WORLD*parallax, which is not an integer tile period).
+            bgOffsetX -= moveX
+            bgOffsetY -= moveY
 
             if (isTouching) {
                 if (fireCd > 0) {
@@ -862,7 +875,7 @@ fun PlayScreen(onExit: () -> Unit) {
             // Deep-space arena: sparse large stars + soft nebula, mirror→normal tiling (seamless edges).
             drawSeamlessTiledMirrored(starFar, bgOffsetX * 0.22f, bgOffsetY * 0.22f, w, h)
             bgNebula?.let {
-                drawSeamlessTiledMirrored(it, bgOffsetX * 0.10f, bgOffsetY * 0.10f, w, h, alpha = 0.32f, tileScale = 1.6f)
+                drawSeamlessTiledMirrored(it, bgOffsetX * 0.12f, bgOffsetY * 0.12f, w, h, alpha = 0.28f, tileScale = 1f)
             }
             drawSeamlessTiledMirrored(starMid, bgOffsetX * 0.45f, bgOffsetY * 0.45f, w, h)
             drawSeamlessTiledMirrored(starNear, bgOffsetX * 0.85f, bgOffsetY * 0.85f, w, h)
@@ -1389,7 +1402,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
-            // Ortung minimap — bottom-right; blips recomputed each frame (ship-relative)
+            // Ortung minimap — bottom-right; absolute world blips (player moves across arena)
             if (!gameOver) {
                 ArenaMinimap(
                     modifier = Modifier
@@ -1480,15 +1493,18 @@ private fun ArenaMinimap(
                     style = Stroke(width = 1.2f)
                 )
                 val mapR = r - 8f
-                // Radar range around ship; blips = toroidal relative positions each frame
-                val radarRange = max(worldW, worldH) * 0.20f
+                // Absolute wrapped world → round arena (player blip MOVES across map)
+                val span = max(worldW, worldH)
+                fun toMx(wx: Float): Float =
+                    cx + ((wrapCoord(wx, worldW) / worldW) - 0.5f) * 2f * mapR * (worldW / span)
+                fun toMy(wy: Float): Float =
+                    cy + ((wrapCoord(wy, worldH) / worldH) - 0.5f) * 2f * mapR * (worldH / span)
                 drawCircle(
                     color = Color(0x184FC3F7),
                     radius = mapR,
                     center = Offset(cx, cy),
                     style = Stroke(width = 1.5f)
                 )
-                // Range rings
                 drawCircle(
                     color = Color(0x104FC3F7),
                     radius = mapR * 0.5f,
@@ -1496,10 +1512,8 @@ private fun ArenaMinimap(
                     style = Stroke(width = 1f)
                 )
                 enemies.forEach { e ->
-                    val rdx = wrapDelta(e.x - shipX, worldW)
-                    val rdy = wrapDelta(e.y - shipY, worldH)
-                    val ex = cx + (rdx / radarRange) * mapR
-                    val ey = cy + (rdy / radarRange) * mapR
+                    val ex = toMx(e.x)
+                    val ey = toMy(e.y)
                     val ddx = ex - cx
                     val ddy = ey - cy
                     if (ddx * ddx + ddy * ddy > mapR * mapR) return@forEach
@@ -1513,7 +1527,9 @@ private fun ArenaMinimap(
                         center = Offset(ex, ey)
                     )
                 }
-                // Player triangle at center = live heading
+                // Player triangle at absolute world pos — moves across arena while heading rotates
+                val px = toMx(shipX)
+                val py = toMy(shipY)
                 val tip = 7.5f
                 val base = 5.2f
                 val rad = (shipAngle - 90f) * (PI / 180.0)
@@ -1523,9 +1539,9 @@ private fun ArenaMinimap(
                 val ly = fx
                 val path = Path().apply {
                     fillType = PathFillType.EvenOdd
-                    moveTo(cx + fx * tip, cy + fy * tip)
-                    lineTo(cx - fx * tip * 0.55f + lx * base, cy - fy * tip * 0.55f + ly * base)
-                    lineTo(cx - fx * tip * 0.55f - lx * base, cy - fy * tip * 0.55f - ly * base)
+                    moveTo(px + fx * tip, py + fy * tip)
+                    lineTo(px - fx * tip * 0.55f + lx * base, py - fy * tip * 0.55f + ly * base)
+                    lineTo(px - fx * tip * 0.55f - lx * base, py - fy * tip * 0.55f - ly * base)
                     close()
                 }
                 drawPath(path, Color(0xFF00E5FF).copy(alpha = 0.35f))
@@ -1624,7 +1640,9 @@ private fun DrawScope.drawSpriteOrOval(img: ImageBitmap?, cx: Float, cy: Float, 
 /**
  * Seamless mirror tiling: tile (i,j) uses scale(±1,±1) from i%2 / j%2
  * (mirror → normal → mirror → …). Shared edges always match. Native bitmap
- * size (× tileScale) — never stretch one tile to the full screen (avoids jumps).
+ * size (× tileScale) — never stretch one tile to the full screen.
+ * Offsets are folded into one mirror-period (2×tile) so scroll stays continuous
+ * with no hitch/pop when the camera wraps the torus.
  */
 private fun DrawScope.drawSeamlessTiledMirrored(
     img: ImageBitmap,
@@ -1638,17 +1656,27 @@ private fun DrawScope.drawSeamlessTiledMirrored(
     val tw = img.width.toFloat() * tileScale
     val th = img.height.toFloat() * tileScale
     if (tw < 1f || th < 1f) return
+    // Mirror period = 2 tiles; positive modulo keeps indices bounded without a visual jump.
+    val periodX = tw * 2f
+    val periodY = th * 2f
+    var ox = offX % periodX
+    if (ox > 0f) ox -= periodX
+    if (ox <= -periodX) ox += periodX
+    var oy = offY % periodY
+    if (oy > 0f) oy -= periodY
+    if (oy <= -periodY) oy += periodY
     val pad = 1f
-    val startCol = floor(-offX / tw).toInt() - 1
-    val endCol = ceil((sw - offX) / tw).toInt() + 1
-    val startRow = floor(-offY / th).toInt() - 1
-    val endRow = ceil((sh - offY) / th).toInt() + 1
+    val startCol = floor(-ox / tw).toInt() - 1
+    val endCol = ceil((sw - ox) / tw).toInt() + 1
+    val startRow = floor(-oy / th).toInt() - 1
+    val endRow = ceil((sh - oy) / th).toInt() + 1
     for (col in startCol..endCol) {
         for (row in startRow..endRow) {
-            val posX = offX + col * tw
-            val posY = offY + row * th
-            val flipX = if (col % 2 != 0) -1f else 1f
-            val flipY = if (row % 2 != 0) -1f else 1f
+            val posX = ox + col * tw
+            val posY = oy + row * th
+            // Kotlin rem can be negative; normalize parity for stable flip
+            val flipX = if (((col % 2) + 2) % 2 != 0) -1f else 1f
+            val flipY = if (((row % 2) + 2) % 2 != 0) -1f else 1f
             scale(scaleX = flipX, scaleY = flipY, pivot = Offset(posX + tw / 2f, posY + th / 2f)) {
                 drawImg(img, posX - pad, posY - pad, tw + pad * 2f, th + pad * 2f, alpha)
             }
@@ -1664,12 +1692,14 @@ private fun DrawScope.drawImg(
     dh: Float,
     alpha: Float = 1f
 ) {
-    drawImage(
-        image = img,
-        dstOffset = IntOffset(x.toInt(), y.toInt()),
-        dstSize = IntSize(dw.toInt().coerceAtLeast(1), dh.toInt().coerceAtLeast(1)),
-        alpha = alpha,
-        filterQuality = FilterQuality.Low
-    )
+    // Sub-pixel translate avoids 1px hitching from IntOffset truncation while scrolling.
+    translate(left = x, top = y) {
+        drawImage(
+            image = img,
+            dstSize = IntSize(dw.toInt().coerceAtLeast(1), dh.toInt().coerceAtLeast(1)),
+            alpha = alpha,
+            filterQuality = FilterQuality.Low
+        )
+    }
 }
 
