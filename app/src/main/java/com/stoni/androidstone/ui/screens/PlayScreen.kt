@@ -274,12 +274,13 @@ fun PlayScreen(onExit: () -> Unit) {
     var shipVx by remember { mutableFloatStateOf(0f) }
     var shipVy by remember { mutableFloatStateOf(0f) }
     var shipAngle by remember { mutableFloatStateOf(0f) }
-    var fingerX by remember { mutableFloatStateOf(540f) }
-    var fingerY by remember { mutableFloatStateOf(700f) }
-    var stickOriginX by remember { mutableFloatStateOf(0f) }
-    var stickOriginY by remember { mutableFloatStateOf(0f) }
+    var fingerX by remember { mutableFloatStateOf(0f) }
+    var fingerY by remember { mutableFloatStateOf(0f) }
     var isTouching by remember { mutableStateOf(false) }
     val stickMaxRadius = 100f
+    // Fixed bottom-left stick (fraction of screen); never floats to finger
+    fun stickOx(sw: Float) = sw * 0.18f
+    fun stickOy(sh: Float) = sh * 0.82f
     var camX by remember { mutableFloatStateOf(WORLD_W * 0.5f) }
     var camY by remember { mutableFloatStateOf(WORLD_H * 0.5f) }
 
@@ -365,10 +366,12 @@ fun PlayScreen(onExit: () -> Unit) {
             // Soft energy: regen manageable; firing never drains energy
             if (energy < 100f) energy = (energy + 0.50f).coerceAtMost(100f)
 
-            // Floating virtual stick: thrust from origin→finger (clamped), not chase-ship
+            // Fixed bottom-left stick: vector from fixed origin→finger (clamped). Never chase finger/ship.
             if (isTouching) {
-                val dx = fingerX - stickOriginX
-                val dy = fingerY - stickOriginY
+                val ox = stickOx(sw)
+                val oy = stickOy(sh)
+                val dx = fingerX - ox
+                val dy = fingerY - oy
                 val dist = hypot(dx, dy)
                 if (dist > 8f) {
                     val nx = dx / dist
@@ -772,8 +775,7 @@ fun PlayScreen(onExit: () -> Unit) {
                 detectDragGestures(
                     onDragStart = { offset ->
                         isTouching = true
-                        stickOriginX = offset.x
-                        stickOriginY = offset.y
+                        // Stick stays fixed bottom-left; finger position drives relative vector
                         fingerX = offset.x
                         fingerY = offset.y
                     },
@@ -1052,14 +1054,25 @@ fun PlayScreen(onExit: () -> Unit) {
                     val thrusting = isTouching || hypot(shipVx, shipVy) > 1.2f
                     if (thrusting) {
                         val tf = thrustFrames[((tick / 5) % thrustFrames.size).coerceAtLeast(0)]
-                        // Clear animated thrust at rear/mouth (~0.7–0.9 ship width), under hull
-                        val tw = shipPxSize * 0.82f
-                        val th = shipPxSize * 0.95f
-                        // Tip-up asset: mouth = bottom of sprite → rear after rotate(shipAngle)
-                        val ty = shipSy + half - th * 0.12f
-                        drawImg(tf, shipSx - tw / 2f, ty, tw, th)
+                        // Crop top ~40% cyan nozzle/body — keep orange/yellow flame only
+                        val srcTop = (tf.height * 0.40f).toInt().coerceIn(1, (tf.height - 4).coerceAtLeast(1))
+                        val srcH = (tf.height - srcTop).coerceAtLeast(1)
+                        val tw = shipPxSize * 0.78f
+                        val th = shipPxSize * 0.55f
+                        // Tip-up hull: mouth at bottom; flame starts at mouth, slight overlap under hull
+                        val mouthY = shipSy + half
+                        val ty = mouthY - th * 0.10f
+                        drawImgSrc(
+                            tf,
+                            srcOffset = IntOffset(0, srcTop),
+                            srcSize = IntSize(tf.width, srcH),
+                            x = shipSx - tw / 2f,
+                            y = ty,
+                            dw = tw,
+                            dh = th
+                        )
                     }
-                    // Always single hull — never swap to triple; no mode icons on ship Canvas
+                    // Always draw hull AFTER thrust so hull covers any leftover nozzle
                     drawImg(shipSingle, shipSx - half, shipSy - half, shipPxSize, shipPxSize)
                 }
             }
@@ -1068,40 +1081,46 @@ fun PlayScreen(onExit: () -> Unit) {
                 drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(shipSx, shipSy))
             }
 
-            // Ephemeral floating stick — only while touching; disappears on release
-            if (isTouching && !gameOver) {
-                val ox = stickOriginX
-                val oy = stickOriginY
-                val rawDx = fingerX - ox
-                val rawDy = fingerY - oy
+            // Fixed bottom-left stick — always faint; stronger while active. Finger stays in corner.
+            if (!gameOver) {
+                val ox = stickOx(size.width)
+                val oy = stickOy(size.height)
+                val rawDx = if (isTouching) fingerX - ox else 0f
+                val rawDy = if (isTouching) fingerY - oy else 0f
                 val rawDist = hypot(rawDx, rawDy)
                 val knobDx: Float
                 val knobDy: Float
-                if (rawDist > stickMaxRadius && rawDist > 0.001f) {
+                if (isTouching && rawDist > stickMaxRadius && rawDist > 0.001f) {
                     knobDx = rawDx / rawDist * stickMaxRadius
                     knobDy = rawDy / rawDist * stickMaxRadius
-                } else {
+                } else if (isTouching) {
                     knobDx = rawDx
                     knobDy = rawDy
+                } else {
+                    knobDx = 0f
+                    knobDy = 0f
                 }
+                val baseA = if (isTouching) 0.22f else 0.12f
+                val fillA = if (isTouching) 0.12f else 0.06f
+                val knobA = if (isTouching) 0.40f else 0.18f
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.18f),
+                    color = Color.White.copy(alpha = baseA),
                     radius = stickMaxRadius,
                     center = Offset(ox, oy),
                     style = Stroke(width = 3f)
                 )
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.08f),
+                    color = Color.White.copy(alpha = fillA),
                     radius = stickMaxRadius,
                     center = Offset(ox, oy)
                 )
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.35f),
+                    color = Color.White.copy(alpha = knobA),
                     radius = 22f,
                     center = Offset(ox + knobDx, oy + knobDy)
                 )
                 drawCircle(
-                    color = Color.White.copy(alpha = 0.55f),
+                    color = Color.White.copy(alpha = if (isTouching) 0.55f else 0.28f),
                     radius = 22f,
                     center = Offset(ox + knobDx, oy + knobDy),
                     style = Stroke(width = 2f)
@@ -1434,6 +1453,28 @@ private fun DrawScope.drawImg(
 ) {
     drawImage(
         image = img,
+        dstOffset = IntOffset(x.toInt(), y.toInt()),
+        dstSize = IntSize(dw.toInt().coerceAtLeast(1), dh.toInt().coerceAtLeast(1)),
+        alpha = alpha,
+        filterQuality = FilterQuality.Low
+    )
+}
+
+/** Draw with source crop (e.g. skip cyan nozzle rows on thrust frames). */
+private fun DrawScope.drawImgSrc(
+    img: ImageBitmap,
+    srcOffset: IntOffset,
+    srcSize: IntSize,
+    x: Float,
+    y: Float,
+    dw: Float,
+    dh: Float,
+    alpha: Float = 1f
+) {
+    drawImage(
+        image = img,
+        srcOffset = srcOffset,
+        srcSize = srcSize,
         dstOffset = IntOffset(x.toInt(), y.toInt()),
         dstSize = IntSize(dw.toInt().coerceAtLeast(1), dh.toInt().coerceAtLeast(1)),
         alpha = alpha,
