@@ -152,7 +152,6 @@ fun PlayScreen(onExit: () -> Unit) {
     DisposableEffect(Unit) { onDispose { sfx.release() } }
 
     val shipSingle = remember { loadStargameAsset(context, "player_glocke_single_128.png") }
-    val shipTriple = remember { loadStargameAsset(context, "player_glocke_triple_128.png") }
     val enemyImg = remember { loadStargameAsset(context, "enemy_stoerer_64.png") }
     val enemyImgB = remember { loadStargameAsset(context, "enemy_stoerer_b_64.png") }
     val enemySwarmer = remember { loadStargameAsset(context, "enemy_stoerer_48.png") }
@@ -224,6 +223,8 @@ fun PlayScreen(onExit: () -> Unit) {
 
     var score by remember { mutableIntStateOf(0) }
     var lives by remember { mutableIntStateOf(4) }
+    val maxLives = 4
+    var energy by remember { mutableFloatStateOf(100f) }
     var paused by remember { mutableStateOf(false) }
     var gameOver by remember { mutableStateOf(false) }
     var banner by remember { mutableStateOf("Feindflotte gesichtet! Abfangen!") }
@@ -256,10 +257,12 @@ fun PlayScreen(onExit: () -> Unit) {
         if (iFrames > 0) return
         if (shield > 0) {
             shield = 0
+            energy = (energy - 20f).coerceAtLeast(15f)
             iFrames = 50
             return
         }
         lives--
+        energy = (energy - 35f).coerceAtLeast(0f)
         iFrames = 75
         if (lives <= 0) {
             gameOver = true
@@ -305,6 +308,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
             if (iFrames > 0) iFrames--
             if (muzzleFlash > 0) muzzleFlash--
+            if (energy < 100f) energy = (energy + 0.22f).coerceAtMost(100f)
 
             if (isTouching) {
                 val shipSx = shipPx - camX + sw / 2f
@@ -686,10 +690,17 @@ fun PlayScreen(onExit: () -> Unit) {
             val toSy = { wy: Float -> wrapDelta(wy - camY, WORLD_H) + size.height / 2f }
 
             drawSeamlessTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
-            bgNebula?.let { drawSeamlessTiled(it, bgOffsetX * 0.20f, bgOffsetY * 0.20f, w, h, alpha = 0.45f) }
+            // Nebula: 1–2 large soft cover layers (no small-tile grid seams)
+            bgNebula?.let {
+                drawSoftCoverLayer(it, bgOffsetX, bgOffsetY, w, h, coverScale = 1.85f, alpha = 0.32f, parallax = 0.12f)
+                drawSoftCoverLayer(it, bgOffsetX + w * 0.18f, bgOffsetY - h * 0.12f, w, h, coverScale = 2.35f, alpha = 0.22f, parallax = 0.07f)
+            }
             drawSeamlessTiled(starMid, bgOffsetX * 0.50f, bgOffsetY * 0.50f, w, h)
             drawSeamlessTiled(starNear, bgOffsetX * 0.90f, bgOffsetY * 0.90f, w, h)
-            bgDebris?.let { drawSeamlessTiled(it, bgOffsetX * 0.55f, bgOffsetY * 0.55f, w, h, alpha = 0.38f) }
+            // Debris: sparse soft layer, low alpha — avoid dense asteroid wallpaper
+            bgDebris?.let {
+                drawSoftCoverLayer(it, bgOffsetX, bgOffsetY, w, h, coverScale = 1.55f, alpha = 0.18f, parallax = 0.40f)
+            }
 
             val half = shipPxSize / 2f
 
@@ -869,28 +880,23 @@ fun PlayScreen(onExit: () -> Unit) {
                 rotate(degrees = shipAngle, pivot = Offset(shipSx, shipSy)) {
                     val thrusting = isTouching || hypot(shipVx, shipVy) > 1.2f
                     if (thrusting) {
-                        val tf = thrustFrames[(tick / 4) % thrustFrames.size]
-                        val tw = shipPxSize * 0.50f
-                        val th = shipPxSize * 0.55f
-                        // Tip-up hull: thrust mouth at bottom of sprite
-                        val ty = shipSy + half - th * 0.20f
+                        val tf = thrustFrames[(tick / 3) % thrustFrames.size]
+                        // Clear animated thrust at rear/mouth (~0.7–0.9 ship width), under hull
+                        val tw = shipPxSize * 0.82f
+                        val th = shipPxSize * 0.95f
+                        // Tip-up asset: mouth = bottom of sprite → rear after rotate(shipAngle)
+                        val ty = shipSy + half - th * 0.12f
                         drawImg(tf, shipSx - tw / 2f, ty, tw, th)
                     }
-                    val ship = if (multishot > 0) shipTriple else shipSingle
-                    drawImg(ship, shipSx - half, shipSy - half, shipPxSize, shipPxSize)
+                    // Always single hull — never swap to triple (blue mode baked in sprite)
+                    drawImg(shipSingle, shipSx - half, shipSy - half, shipPxSize, shipPxSize)
 
                     if (muzzleFlash > 0) {
                         val m = if (muzzleFlash > 2) muzzle1 else muzzle2
-                        val flash = 42f
-                        val mouthY = shipSy - half - flash * 0.55f
-                        if (multishot > 0) {
-                            val offsets = floatArrayOf(-20f, 0f, 20f)
-                            for (ox in offsets) {
-                                drawImg(m, shipSx + ox - flash / 2f, mouthY, flash, flash)
-                            }
-                        } else {
-                            drawImg(m, shipSx - flash / 2f, mouthY, flash, flash)
-                        }
+                        // Small nose flash only — not a large mode icon on the hull
+                        val flash = 26f
+                        val mouthY = shipSy - half - flash * 0.50f
+                        drawImg(m, shipSx - flash / 2f, mouthY, flash, flash)
                     }
                 }
             }
@@ -899,34 +905,91 @@ fun PlayScreen(onExit: () -> Unit) {
                 drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(shipSx, shipSy))
             }
 
+            // --- Top-left: lives hearts + HP / energy bars ---
+            val hudLeft = 12f
+            val hudTop = 10f
             repeat(lives.coerceAtLeast(0)) { i ->
-                drawImg(heartImg, 12f + i * 32f, 12f, 28f, 28f)
+                drawImg(heartImg, hudLeft + i * 30f, hudTop, 26f, 26f)
+            }
+            val barLeft = hudLeft
+            val barW = 148f
+            val hpY = hudTop + 32f
+            val enY = hpY + 16f
+            // HP bar (thick)
+            drawRect(Color(0xFF2A1A1A), topLeft = Offset(barLeft, hpY), size = Size(barW, 11f))
+            drawRect(Color(0xFF4A2020), topLeft = Offset(barLeft, hpY), size = Size(barW, 11f), style = Stroke(width = 1.5f))
+            val hpFrac = (lives.toFloat() / maxLives.toFloat()).coerceIn(0f, 1f)
+            drawRect(
+                Color(0xFFE53935),
+                topLeft = Offset(barLeft, hpY),
+                size = Size(barW * hpFrac, 11f)
+            )
+            // Energy / reactor bar
+            drawRect(Color(0xFF12202A), topLeft = Offset(barLeft, enY), size = Size(barW, 9f))
+            drawRect(Color(0xFF1A3A4A), topLeft = Offset(barLeft, enY), size = Size(barW, 9f), style = Stroke(width = 1.5f))
+            val enFrac = (energy / 100f).coerceIn(0f, 1f)
+            drawRect(
+                Color(0xFF00E5FF),
+                topLeft = Offset(barLeft, enY),
+                size = Size(barW * enFrac, 9f)
+            )
+            // Optional shield bar when active
+            if (shield > 0) {
+                val shY = enY + 14f
+                drawRect(Color(0xFF1A2A3A), topLeft = Offset(barLeft, shY), size = Size(barW, 7f))
+                val shFrac = (shield / 420f).coerceIn(0f, 1f)
+                drawRect(
+                    Color(0xFF69F0AE),
+                    topLeft = Offset(barLeft, shY),
+                    size = Size(barW * shFrac, 7f)
+                )
+            }
+
+            // Mode status chips in HUD (not on ship) — top-right under score area
+            val chipSize = 34f
+            var chipX = size.width - 16f - chipSize
+            val chipY = 40f
+            val modeChips = buildList {
+                if (speedBoost > 0) add(puSpeed to Color(0xFF00E5FF))
+                if (shield > 0) add(puHeal to Color(0xFF69F0AE))
+                if (multishot > 0) add(puWeapon to Color(0xFFFF5252))
+            }
+            for ((img, ring) in modeChips) {
+                val cx = chipX + chipSize / 2f
+                val cy = chipY + chipSize / 2f
+                drawCircle(ring.copy(alpha = 0.20f), chipSize * 0.62f, Offset(cx, cy))
+                drawCircle(ring.copy(alpha = 0.85f), chipSize * 0.55f, Offset(cx, cy), style = Stroke(width = 2f))
+                drawImg(img, chipX + 3f, chipY + 3f, chipSize - 6f, chipSize - 6f)
+                chipX -= chipSize + 8f
             }
 
             if (isBossActive) {
-                val barW = size.width * 0.7f
-                val barX = (size.width - barW) / 2f
-                val barY = 86f
-                drawRect(Color(0xFF35123D), topLeft = Offset(barX, barY), size = Size(barW, 12f))
+                val bossBarW = size.width * 0.7f
+                val barX = (size.width - bossBarW) / 2f
+                val barY = 102f
+                drawRect(Color(0xFF35123D), topLeft = Offset(barX, barY), size = Size(bossBarW, 12f))
                 val frac = (bossHpCurrent / bossHpMax.coerceAtLeast(1f)).coerceIn(0f, 1f)
-                drawRect(Color(0xFFE040FB), topLeft = Offset(barX, barY), size = Size(barW * frac, 12f))
+                drawRect(Color(0xFFE040FB), topLeft = Offset(barX, barY), size = Size(bossBarW * frac, 12f))
             }
         }
 
         Text(
-            "Score $score  Hi $high  W$wave",
+            "Score $score   Hi $high   Welle $wave",
             color = Color(0xFFF2E6D0),
-            fontSize = 14.sp,
-            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+            fontSize = 13.sp,
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 12.dp)
         )
         Text(
             banner,
             color = Color(0xFFC9A66B),
             fontSize = 13.sp,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 48.dp)
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 78.dp)
         )
-        TextButton(onClick = { paused = !paused }, modifier = Modifier.align(Alignment.TopStart).padding(top = 44.dp)) {
-            Text(if (paused) "Weiter" else "Pause", color = Color.White)
+        TextButton(
+            onClick = { paused = !paused },
+            modifier = Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 70.dp)
+        ) {
+            Text(if (paused) "Weiter" else "Pause", color = Color.White, fontSize = 14.sp)
         }
         if (paused) {
             Text("Pause", color = Color.White, fontSize = 18.sp, modifier = Modifier.align(Alignment.Center))
@@ -952,6 +1015,30 @@ private fun DrawScope.drawSpriteOrOval(img: ImageBitmap?, cx: Float, cy: Float, 
             style = Stroke(width = 2f)
         )
     }
+}
+
+/** One oversized soft layer with slow parallax drift — no tiling grid seams. */
+private fun DrawScope.drawSoftCoverLayer(
+    img: ImageBitmap,
+    offX: Float,
+    offY: Float,
+    sw: Float,
+    sh: Float,
+    coverScale: Float = 1.6f,
+    alpha: Float = 0.32f,
+    parallax: Float = 0.15f
+) {
+    val dw = sw * coverScale
+    val dh = sh * coverScale
+    val spanX = dw * 0.28f
+    val spanY = dh * 0.28f
+    val rawX = offX * parallax
+    val rawY = offY * parallax
+    val driftX = ((rawX % spanX) + spanX) % spanX - spanX * 0.5f
+    val driftY = ((rawY % spanY) + spanY) % spanY - spanY * 0.5f
+    val x = (sw - dw) * 0.5f + driftX
+    val y = (sh - dh) * 0.5f + driftY
+    drawImg(img, x, y, dw, dh, alpha)
 }
 
 /** Positive-modulo tile with 2px overlap — no mirror seams. */
