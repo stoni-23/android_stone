@@ -56,8 +56,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import com.stoni.androidstone.R
+import com.stoni.androidstone.game.EnemyType
+import com.stoni.androidstone.game.PowerUpKind
+import com.stoni.androidstone.game.bomberDropVelocity
+import com.stoni.androidstone.game.bomberFireCooldown
+import com.stoni.androidstone.game.canShoot
+import com.stoni.androidstone.game.isBossLike
 import com.stoni.androidstone.game.loadStargameAsset
 import com.stoni.androidstone.game.loadStargameAssetOrNull
+import com.stoni.androidstone.game.pickEnemySpawn
+import com.stoni.androidstone.game.rollPowerUpDrop
 import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
@@ -73,41 +81,6 @@ private fun wrapDelta(d: Float, size: Float): Float {
     var v = ((d % size) + size) % size
     if (v > size * 0.5f) v -= size
     return v
-}
-
-private enum class EnemyType(
-    val baseRadius: Float,
-    val speed: Float,
-    val maxHp: Int,
-    val color: Color,
-    val scoreValue: Int
-) {
-    SWARMER(14f, 4.5f, 1, Color(0xFF00FF9D), 10),
-    SCOUT(22f, 3.0f, 3, Color(0xFFFF5252), 25),
-    TANK(38f, 1.4f, 10, Color(0xFFFF9100), 75),
-    BOSS(65f, 0.9f, 60, Color(0xFFE040FB), 500),
-    LANG(20f, 2.8f, 4, Color(0xFF82B1FF), 35),
-    RUND(28f, 2.0f, 6, Color(0xFFFF80AB), 45),
-    KOMET(22f, 3.2f, 2, Color(0xFFFFAB40), 20),
-    KOMET_BIG(65f, 0.75f, 18, Color(0xFFFF6D00), 400),
-    ASTEROID(24f, 2.2f, 3, Color(0xFFBCAAA4), 15),
-    FELS(40f, 1.1f, 12, Color(0xFF8D6E63), 80),
-    JAEGER(22f, 3.4f, 3, Color(0xFF40C4FF), 30),
-    MINE(18f, 1.6f, 1, Color(0xFFFF1744), 35),
-    SCHNELL(16f, 5.4f, 1, Color(0xFF18FFFF), 22),
-    PANZER(42f, 0.95f, 16, Color(0xFFBF360C), 95),
-    DROHNE(15f, 3.6f, 1, Color(0xFF69F0AE), 14),
-    BOMBER(28f, 1.7f, 5, Color(0xFFFF6E40), 55)
-}
-
-private fun EnemyType.isBossLike(): Boolean =
-    this == EnemyType.BOSS || this == EnemyType.KOMET_BIG
-
-private fun EnemyType.canShoot(): Boolean = when (this) {
-    EnemyType.SCOUT, EnemyType.TANK, EnemyType.BOSS, EnemyType.JAEGER,
-    EnemyType.LANG, EnemyType.RUND, EnemyType.SCHNELL, EnemyType.PANZER,
-    EnemyType.BOMBER -> true
-    else -> false
 }
 
 private data class Bullet(
@@ -130,7 +103,7 @@ private data class Enemy(
     var angle: Float = 0f
 )
 
-private data class PowerUp(var x: Float, var y: Float, val type: Int)
+private data class PowerUp(var x: Float, var y: Float, val type: PowerUpKind)
 private data class Fx(var x: Float, var y: Float, var life: Int, val kind: Int)
 
 private class GameSfx(context: Context) {
@@ -294,6 +267,8 @@ fun PlayScreen(onExit: () -> Unit) {
     var multishot by remember { mutableIntStateOf(0) }
     var shield by remember { mutableIntStateOf(0) }
     var speedBoost by remember { mutableIntStateOf(0) }
+    var rapidFire by remember { mutableIntStateOf(0) }
+    var scoreMagnet by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
 
     var bgOffsetX by remember { mutableFloatStateOf(0f) }
@@ -439,7 +414,11 @@ fun PlayScreen(onExit: () -> Unit) {
                 if (fireCd > 0) {
                     fireCd--
                 } else {
-                    fireCd = if (multishot > 0) 8 else 13
+                    fireCd = when {
+                        rapidFire > 0 -> 6
+                        multishot > 0 -> 8
+                        else -> 13
+                    }
                     // No muzzle flash on hull — modes live only in HUD chips
                     sfx.shoot()
                     val bSpeed = if (speedBoost > 0) 24f else 20f
@@ -468,6 +447,8 @@ fun PlayScreen(onExit: () -> Unit) {
             if (multishot > 0) multishot--
             if (shield > 0) shield--
             if (speedBoost > 0) speedBoost--
+            if (rapidFire > 0) rapidFire--
+            if (scoreMagnet > 0) scoreMagnet--
 
             val enemiesPerWave = 16 + wave * 6
             if (awaitingBoss && enemies.isEmpty() && bullets.none { !it.fromPlayer }) {
@@ -504,30 +485,9 @@ fun PlayScreen(onExit: () -> Unit) {
                         shipPy + sin(spawnAngle) * spawnDist,
                     )
 
-                    // Artiflux mix: SCHNELL/PANZER/DROHNE/BOMBER + existing types
-                    val r = Random.nextFloat()
-                    val type = when {
-                        r < 0.06f -> EnemyType.ASTEROID
-                        r < 0.10f -> EnemyType.KOMET
-                        wave >= 3 && r < 0.14f ->
-                            if (Random.nextBoolean()) EnemyType.MINE else EnemyType.FELS
-                        wave >= 2 && r < 0.18f -> EnemyType.TANK
-                        wave >= 2 && r < 0.24f -> EnemyType.PANZER
-                        r < 0.34f -> EnemyType.SWARMER
-                        wave >= 1 && r < 0.44f -> EnemyType.DROHNE
-                        r < 0.52f -> EnemyType.LANG
-                        r < 0.58f -> EnemyType.RUND
-                        wave >= 2 && r < 0.66f -> EnemyType.SCHNELL
-                        wave >= 3 && r < 0.74f -> EnemyType.BOMBER
-                        wave >= 2 && r < 0.86f -> EnemyType.JAEGER
-                        else -> EnemyType.SCOUT
-                    }
-
-                    val pack = when (type) {
-                        EnemyType.SWARMER -> 2 + Random.nextInt(3)
-                        EnemyType.DROHNE -> 2 + Random.nextInt(3) // 2–4 swarm pack
-                        else -> 1
-                    }
+                    val pick = pickEnemySpawn(wave)
+                    val type = pick.type
+                    val pack = pick.packSize
                     repeat(pack) { j ->
                         if (spawned >= enemiesPerWave) return@repeat
                         val ox = if (j == 0) 0f else (Random.nextFloat() - 0.5f) * 90f
@@ -592,8 +552,12 @@ fun PlayScreen(onExit: () -> Unit) {
                             e.y += ny * radial + nx * tang
                         }
                         EnemyType.BOMBER -> {
-                            e.x += nx * eSpeed * 0.45f + (-ny) * eSpeed * 0.95f
-                            e.y += ny * eSpeed * 0.45f + nx * eSpeed * 0.95f
+                            // Sideways/cross or slow frontal — not aggressive chase
+                            val crossBias = 0.55f + 0.35f * sin(tick * 0.04f + e.x * 0.01f)
+                            val approach = eSpeed * 0.22f
+                            val lateral = eSpeed * 1.05f
+                            e.x += nx * approach * (1f - crossBias) + (-ny) * lateral * crossBias
+                            e.y += ny * approach * (1f - crossBias) + nx * lateral * crossBias
                         }
                         else -> {
                             e.x += nx * eSpeed
@@ -615,7 +579,7 @@ fun PlayScreen(onExit: () -> Unit) {
                             EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.LANG, EnemyType.SCHNELL -> 90 - wave * 3
                             EnemyType.RUND -> 80 - wave * 2
                             EnemyType.TANK, EnemyType.PANZER -> 70 - wave * 2
-                            EnemyType.BOMBER -> 55 - wave * 2
+                            EnemyType.BOMBER -> bomberFireCooldown(wave)
                             EnemyType.BOSS -> 35
                             else -> 100
                         }.coerceAtLeast(20)
@@ -632,8 +596,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
                             when (e.type) {
                                 EnemyType.BOMBER -> {
-                                    val dropVy = 8.5f + wave * 0.3f
-                                    val dropVx = (Random.nextFloat() - 0.5f) * 2.4f + ebvx * 0.12f
+                                    val (dropVx, dropVy) = bomberDropVelocity(wave)
                                     bullets += Bullet(e.x, e.y, dropVx, dropVy, 180f, false)
                                 }
                                 EnemyType.BOSS, EnemyType.TANK, EnemyType.PANZER, EnemyType.RUND -> {
@@ -711,8 +674,10 @@ fun PlayScreen(onExit: () -> Unit) {
                                     high = score
                                     prefs.edit { putInt("highscore", score) }
                                 }
-                            } else if (Random.nextFloat() < 0.30f) {
-                                powerups += PowerUp(e.x, e.y, Random.nextInt(3))
+                            } else {
+                                rollPowerUpDrop(wave)?.let { kind ->
+                                    powerups += PowerUp(e.x, e.y, kind)
+                                }
                             }
                         }
                     }
@@ -742,15 +707,50 @@ fun PlayScreen(onExit: () -> Unit) {
                 }
             }
 
+            if (scoreMagnet > 0) {
+                for (p in powerups) {
+                    val mdx = wrapDx(shipPx, p.x)
+                    val mdy = wrapDy(shipPy, p.y)
+                    val md = hypot(mdx, mdy)
+                    if (md > 1f && md < 420f) {
+                        val pull = 4.5f
+                        val (nxp, nyp) = wrapWorld(p.x + (mdx / md) * pull, p.y + (mdy / md) * pull)
+                        p.x = nxp
+                        p.y = nyp
+                    }
+                }
+            }
+
             val got = mutableSetOf<PowerUp>()
             for (p in powerups) {
                 if (wrapDist(p.x, p.y, shipPx, shipPy) < 48f) {
                     got += p
                     sfx.pickup()
                     when (p.type) {
-                        0 -> { multishot = 420; banner = "360° Mehrschuss!" }
-                        1 -> { shield = 420; banner = "Glocken-Schutzschild!" }
-                        2 -> { speedBoost = 420; banner = "Hyper-Schub!" }
+                        PowerUpKind.ENERGY -> {
+                            energy = (energy + 42f).coerceAtMost(100f)
+                            banner = "Energie +!"
+                        }
+                        PowerUpKind.RAPID_FIRE -> {
+                            rapidFire = 480
+                            banner = "Schnellfeuer!"
+                        }
+                        PowerUpKind.SPREAD -> {
+                            multishot = 420
+                            banner = "360° Mehrschuss!"
+                        }
+                        PowerUpKind.SHIELD -> {
+                            shield = 420
+                            banner = "Glocken-Schutzschild!"
+                        }
+                        PowerUpKind.SCORE_MAGNET -> {
+                            scoreMagnet = 480
+                            banner = "Score-Magnet!"
+                        }
+                        PowerUpKind.SPEED_BOOST -> {
+                            speedBoost = 420
+                            banner = "Hyper-Schub!"
+                        }
                     }
                 }
             }
@@ -1017,15 +1017,20 @@ fun PlayScreen(onExit: () -> Unit) {
             powerups.forEach { p ->
                 val px = toSx(p.x)
                 val py = toSy(p.y)
+                // Remap to existing icons only (no new PNG names); Kacki can swap later
                 val ring = when (p.type) {
-                    0 -> Color(0xFFFF5252)
-                    1 -> Color(0xFF69F0AE)
+                    PowerUpKind.SPREAD, PowerUpKind.RAPID_FIRE -> Color(0xFFFF5252)
+                    PowerUpKind.SHIELD, PowerUpKind.ENERGY -> Color(0xFF69F0AE)
                     else -> Color(0xFF00E5FF)
                 }
                 drawCircle(ring.copy(alpha = 0.22f), 38f, Offset(px, py))
                 drawCircle(color = ring.copy(alpha = 0.85f), radius = 32f, center = Offset(px, py), style = Stroke(width = 4f))
-                val img = when (p.type) { 0 -> puWeapon; 1 -> puHeal; else -> puSpeed }
-                val icon = if (p.type == 2) 48f else 38f
+                val img = when (p.type) {
+                    PowerUpKind.SPREAD, PowerUpKind.RAPID_FIRE -> puWeapon
+                    PowerUpKind.SHIELD, PowerUpKind.ENERGY -> puHeal
+                    else -> puSpeed
+                }
+                val icon = if (p.type == PowerUpKind.SPEED_BOOST || p.type == PowerUpKind.SCORE_MAGNET) 48f else 38f
                 drawImg(img, px - icon / 2f, py - icon / 2f, icon, icon)
             }
 
