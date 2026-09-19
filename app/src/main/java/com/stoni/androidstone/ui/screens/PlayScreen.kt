@@ -4,26 +4,52 @@ import android.content.Context
 import android.media.AudioAttributes
 import android.media.SoundPool
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -67,7 +93,11 @@ private enum class EnemyType(
     ASTEROID(24f, 2.2f, 3, Color(0xFFBCAAA4), 15),
     FELS(40f, 1.1f, 12, Color(0xFF8D6E63), 80),
     JAEGER(22f, 3.4f, 3, Color(0xFF40C4FF), 30),
-    MINE(18f, 1.6f, 1, Color(0xFFFF1744), 35)
+    MINE(18f, 1.6f, 1, Color(0xFFFF1744), 35),
+    SCHNELL(16f, 5.4f, 1, Color(0xFF18FFFF), 22),
+    PANZER(42f, 0.95f, 16, Color(0xFFBF360C), 95),
+    DROHNE(15f, 3.6f, 1, Color(0xFF69F0AE), 14),
+    BOMBER(28f, 1.7f, 5, Color(0xFFFF6E40), 55)
 }
 
 private fun EnemyType.isBossLike(): Boolean =
@@ -75,7 +105,8 @@ private fun EnemyType.isBossLike(): Boolean =
 
 private fun EnemyType.canShoot(): Boolean = when (this) {
     EnemyType.SCOUT, EnemyType.TANK, EnemyType.BOSS, EnemyType.JAEGER,
-    EnemyType.LANG, EnemyType.RUND -> true
+    EnemyType.LANG, EnemyType.RUND, EnemyType.SCHNELL, EnemyType.PANZER,
+    EnemyType.BOMBER -> true
     else -> false
 }
 
@@ -169,14 +200,6 @@ fun PlayScreen(onExit: () -> Unit) {
             loadStargameAsset(context, "fx_thrust_4_48.png"),
         )
     }
-    val thrustFrames64 = remember {
-        listOf(
-            loadStargameAsset(context, "fx_thrust_1_64.png"),
-            loadStargameAsset(context, "fx_thrust_2_64.png"),
-            loadStargameAsset(context, "fx_thrust_3_64.png"),
-            loadStargameAsset(context, "fx_thrust_4_64.png"),
-        )
-    }
 
     val bulletImg = remember { loadStargameAsset(context, "bullet_player.png") }
     val bulletTriple = remember { loadStargameAsset(context, "bullet_player_triple.png") }
@@ -185,10 +208,28 @@ fun PlayScreen(onExit: () -> Unit) {
     val starMid = remember { loadStargameAsset(context, "bg_stars_mid.png") }
     val starNear = remember { loadStargameAsset(context, "bg_stars_near.png") }
     val bgNebula = remember { loadStargameAssetOrNull(context, "bg_nebula.png") }
+    // Artiflux: komet core (ball) + separate flame trail frames
+    val kometCore64 = remember { loadStargameAssetOrNull(context, "enemy_komet_core_64.png") }
+    val kometCore128 = remember { loadStargameAssetOrNull(context, "enemy_komet_core_128.png") }
+    val kometFlame48 = remember {
+        listOfNotNull(
+            loadStargameAssetOrNull(context, "enemy_komet_flame_1_48.png"),
+            loadStargameAssetOrNull(context, "enemy_komet_flame_2_48.png"),
+            loadStargameAssetOrNull(context, "enemy_komet_flame_3_48.png"),
+            loadStargameAssetOrNull(context, "enemy_komet_flame_4_48.png"),
+        )
+    }
+    val kometFlame64 = remember {
+        listOfNotNull(
+            loadStargameAssetOrNull(context, "enemy_komet_flame_1_64.png"),
+            loadStargameAssetOrNull(context, "enemy_komet_flame_2_64.png"),
+            loadStargameAssetOrNull(context, "enemy_komet_flame_3_64.png"),
+            loadStargameAssetOrNull(context, "enemy_komet_flame_4_64.png"),
+        )
+    }
+    // Fallback baked komet PNGs if core missing
     val kometImg = remember { loadStargameAssetOrNull(context, "enemy_komet_64.png") }
-    val kometLicht = remember { loadStargameAssetOrNull(context, "enemy_komet_licht_64.png") }
     val kometImg128 = remember { loadStargameAssetOrNull(context, "enemy_komet_128.png") }
-    val kometLicht128 = remember { loadStargameAssetOrNull(context, "enemy_komet_licht_128.png") }
     val kometBigImg = remember { loadStargameAssetOrNull(context, "enemy_komet_big_128.png") }
     val asteroidImg = remember { loadStargameAssetOrNull(context, "enemy_asteroid_64.png") }
     val asteroidImgB = remember { loadStargameAssetOrNull(context, "enemy_asteroid_b_64.png") }
@@ -200,6 +241,19 @@ fun PlayScreen(onExit: () -> Unit) {
     val mineImg = remember { loadStargameAssetOrNull(context, "enemy_mine_64.png") }
     val mineLicht = remember { loadStargameAssetOrNull(context, "enemy_mine_licht_64.png") }
     val mineImg80 = remember { loadStargameAssetOrNull(context, "enemy_mine_80.png") }
+    val schnellImg = remember { loadStargameAssetOrNull(context, "enemy_schnell_64.png") }
+    val schnellLicht = remember { loadStargameAssetOrNull(context, "enemy_schnell_licht_64.png") }
+    val schnellImg80 = remember { loadStargameAssetOrNull(context, "enemy_schnell_80.png") }
+    val panzerImg = remember { loadStargameAssetOrNull(context, "enemy_panzer_64.png") }
+    val panzerLicht = remember { loadStargameAssetOrNull(context, "enemy_panzer_licht_64.png") }
+    val panzerImg80 = remember { loadStargameAssetOrNull(context, "enemy_panzer_80.png") }
+    val panzerImg128 = remember { loadStargameAssetOrNull(context, "enemy_panzer_128.png") }
+    val drohneImg = remember { loadStargameAssetOrNull(context, "enemy_drohne_64.png") }
+    val drohneLicht = remember { loadStargameAssetOrNull(context, "enemy_drohne_licht_64.png") }
+    val drohneImg80 = remember { loadStargameAssetOrNull(context, "enemy_drohne_80.png") }
+    val bomberImg = remember { loadStargameAssetOrNull(context, "enemy_bomber_64.png") }
+    val bomberLicht = remember { loadStargameAssetOrNull(context, "enemy_bomber_licht_64.png") }
+    val bomberImg80 = remember { loadStargameAssetOrNull(context, "enemy_bomber_80.png") }
     val heartImg = remember { loadStargameAsset(context, "ui_heart.png") }
     val puWeapon = remember { loadStargameAsset(context, "icon_mode_weapon_64.png") }
     val puHeal = remember { loadStargameAsset(context, "icon_mode_heal_64.png") }
@@ -282,12 +336,13 @@ fun PlayScreen(onExit: () -> Unit) {
     }
 
     fun enemyHitRadius(type: EnemyType): Float = when (type) {
-        EnemyType.SWARMER -> swarmerPxSize * 0.45f
-        EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.KOMET, EnemyType.ASTEROID, EnemyType.MINE ->
+        EnemyType.SWARMER, EnemyType.DROHNE -> swarmerPxSize * 0.45f
+        EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.KOMET, EnemyType.ASTEROID, EnemyType.MINE,
+        EnemyType.SCHNELL ->
             enemyPxSize * 0.45f
         EnemyType.LANG -> max(enemyLangW, enemyLangH) * 0.42f
-        EnemyType.RUND -> enemyRundSize * 0.45f
-        EnemyType.TANK, EnemyType.FELS -> tankPxSize * 0.45f
+        EnemyType.RUND, EnemyType.BOMBER -> enemyRundSize * 0.45f
+        EnemyType.TANK, EnemyType.FELS, EnemyType.PANZER -> tankPxSize * 0.45f
         EnemyType.BOSS, EnemyType.KOMET_BIG -> bossPxSize * 0.45f
     }
 
@@ -452,22 +507,30 @@ fun PlayScreen(onExit: () -> Unit) {
                         shipPy + sin(spawnAngle) * spawnDist,
                     )
 
-                    // Busier mix: more SWARMER packs / JAEGER / SCOUT; KOMET less wallpaper
+                    // Artiflux mix: SCHNELL/PANZER/DROHNE/BOMBER + existing types
                     val r = Random.nextFloat()
                     val type = when {
-                        r < 0.08f -> EnemyType.ASTEROID
-                        r < 0.12f -> EnemyType.KOMET
-                        wave >= 3 && r < 0.18f ->
+                        r < 0.06f -> EnemyType.ASTEROID
+                        r < 0.10f -> EnemyType.KOMET
+                        wave >= 3 && r < 0.14f ->
                             if (Random.nextBoolean()) EnemyType.MINE else EnemyType.FELS
-                        wave >= 2 && r < 0.24f -> EnemyType.TANK
-                        r < 0.42f -> EnemyType.SWARMER
-                        r < 0.54f -> EnemyType.LANG
-                        r < 0.64f -> EnemyType.RUND
-                        wave >= 2 && r < 0.82f -> EnemyType.JAEGER
+                        wave >= 2 && r < 0.18f -> EnemyType.TANK
+                        wave >= 2 && r < 0.24f -> EnemyType.PANZER
+                        r < 0.34f -> EnemyType.SWARMER
+                        wave >= 1 && r < 0.44f -> EnemyType.DROHNE
+                        r < 0.52f -> EnemyType.LANG
+                        r < 0.58f -> EnemyType.RUND
+                        wave >= 2 && r < 0.66f -> EnemyType.SCHNELL
+                        wave >= 3 && r < 0.74f -> EnemyType.BOMBER
+                        wave >= 2 && r < 0.86f -> EnemyType.JAEGER
                         else -> EnemyType.SCOUT
                     }
 
-                    val pack = if (type == EnemyType.SWARMER) 2 + Random.nextInt(3) else 1
+                    val pack = when (type) {
+                        EnemyType.SWARMER -> 2 + Random.nextInt(3)
+                        EnemyType.DROHNE -> 2 + Random.nextInt(3) // 2–4 swarm pack
+                        else -> 1
+                    }
                     repeat(pack) { j ->
                         if (spawned >= enemiesPerWave) return@repeat
                         val ox = if (j == 0) 0f else (Random.nextFloat() - 0.5f) * 90f
@@ -506,14 +569,40 @@ fun PlayScreen(onExit: () -> Unit) {
                     EnemyType.KOMET_BIG -> e.angle += 0.6f
                     EnemyType.ASTEROID -> e.angle += 2.5f
                     EnemyType.FELS -> e.angle += 0.7f
-                    EnemyType.MINE -> e.angle += 1.0f
+                    EnemyType.MINE, EnemyType.DROHNE -> e.angle += 1.0f
                     else -> e.angle = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
                 }
 
                 val eSpeed = e.type.speed + wave * 0.08f
                 if (dist > 12f) {
-                    e.x += (edx / dist) * eSpeed
-                    e.y += (edy / dist) * eSpeed
+                    val nx = edx / dist
+                    val ny = edy / dist
+                    when (e.type) {
+                        EnemyType.SCHNELL -> {
+                            val zig = sin(tick * 0.28f + e.x * 0.02f) * eSpeed * 1.35f
+                            e.x += nx * eSpeed + (-ny) * zig
+                            e.y += ny * eSpeed + nx * zig
+                        }
+                        EnemyType.DROHNE -> {
+                            val prefer = 170f
+                            val radial = when {
+                                dist > prefer + 50f -> eSpeed * 0.9f
+                                dist < prefer - 50f -> -eSpeed * 0.55f
+                                else -> eSpeed * 0.15f
+                            }
+                            val tang = eSpeed * 1.1f
+                            e.x += nx * radial + (-ny) * tang
+                            e.y += ny * radial + nx * tang
+                        }
+                        EnemyType.BOMBER -> {
+                            e.x += nx * eSpeed * 0.45f + (-ny) * eSpeed * 0.95f
+                            e.y += ny * eSpeed * 0.45f + nx * eSpeed * 0.95f
+                        }
+                        else -> {
+                            e.x += nx * eSpeed
+                            e.y += ny * eSpeed
+                        }
+                    }
                 }
                 val wrapped = wrapWorld(e.x, e.y)
                 e.x = wrapped.first
@@ -526,9 +615,10 @@ fun PlayScreen(onExit: () -> Unit) {
                 if (e.type.canShoot()) {
                     if (e.fireCd > 0) e.fireCd-- else {
                         e.fireCd = when (e.type) {
-                            EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.LANG -> 90 - wave * 3
+                            EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.LANG, EnemyType.SCHNELL -> 90 - wave * 3
                             EnemyType.RUND -> 80 - wave * 2
-                            EnemyType.TANK -> 70 - wave * 2
+                            EnemyType.TANK, EnemyType.PANZER -> 70 - wave * 2
+                            EnemyType.BOMBER -> 55 - wave * 2
                             EnemyType.BOSS -> 35
                             else -> 100
                         }.coerceAtLeast(20)
@@ -536,22 +626,29 @@ fun PlayScreen(onExit: () -> Unit) {
                         if (dist > 15f) {
                             val ebSpeed = when (e.type) {
                                 EnemyType.BOSS -> 14f + wave * 0.4f
-                                EnemyType.TANK -> 10f + wave * 0.3f
+                                EnemyType.TANK, EnemyType.PANZER -> 10f + wave * 0.3f
                                 else -> 11.5f + wave * 0.4f
                             }
                             val faceAng = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
                             val ebvx = (edx / dist) * ebSpeed
                             val ebvy = (edy / dist) * ebSpeed
 
-                            if (e.type == EnemyType.BOSS || e.type == EnemyType.TANK || e.type == EnemyType.RUND) {
-                                val sp1 = (faceAng - 90f - 18f) * PI / 180.0
-                                val sp2 = (faceAng - 90f + 18f) * PI / 180.0
-                                bullets += Bullet(e.x, e.y, ebvx, ebvy, faceAng, false)
-                                bullets += Bullet(e.x, e.y, (cos(sp1) * ebSpeed).toFloat(), (sin(sp1) * ebSpeed).toFloat(), faceAng - 18f, false)
-                                bullets += Bullet(e.x, e.y, (cos(sp2) * ebSpeed).toFloat(), (sin(sp2) * ebSpeed).toFloat(), faceAng + 18f, false)
-                            } else {
-                                // SCOUT / JAEGER / LANG: single shot aimed at player
-                                bullets += Bullet(e.x, e.y, ebvx, ebvy, faceAng, false)
+                            when (e.type) {
+                                EnemyType.BOMBER -> {
+                                    val dropVy = 8.5f + wave * 0.3f
+                                    val dropVx = (Random.nextFloat() - 0.5f) * 2.4f + ebvx * 0.12f
+                                    bullets += Bullet(e.x, e.y, dropVx, dropVy, 180f, false)
+                                }
+                                EnemyType.BOSS, EnemyType.TANK, EnemyType.PANZER, EnemyType.RUND -> {
+                                    val sp1 = (faceAng - 90f - 18f) * PI / 180.0
+                                    val sp2 = (faceAng - 90f + 18f) * PI / 180.0
+                                    bullets += Bullet(e.x, e.y, ebvx, ebvy, faceAng, false)
+                                    bullets += Bullet(e.x, e.y, (cos(sp1) * ebSpeed).toFloat(), (sin(sp1) * ebSpeed).toFloat(), faceAng - 18f, false)
+                                    bullets += Bullet(e.x, e.y, (cos(sp2) * ebSpeed).toFloat(), (sin(sp2) * ebSpeed).toFloat(), faceAng + 18f, false)
+                                }
+                                else -> {
+                                    bullets += Bullet(e.x, e.y, ebvx, ebvy, faceAng, false)
+                                }
                             }
                         }
                     }
@@ -719,40 +816,44 @@ fun PlayScreen(onExit: () -> Unit) {
                 val sy = toSy(e.y)
                 when (e.type) {
                     EnemyType.KOMET -> {
-                        // Travel toward player; trail opposite motion (flame behind)
+                        // Core ball + flame child @ Bottom-Center; flame DOWN opposite travel
                         val edx = wrapDx(shipPx, e.x)
                         val edy = wrapDy(shipPy, e.y)
                         val heading = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
-                        val tf = thrustFrames[(tick / 2 + i) % thrustFrames.size]
+                        val coreSize = enemyPxSize * 0.72f
+                        val flames = if (kometFlame48.isNotEmpty()) kometFlame48 else emptyList()
                         rotate(degrees = heading, pivot = Offset(sx, sy)) {
-                            val tw = enemyPxSize * 0.78f
-                            val th = enemyPxSize * 0.95f
-                            drawImg(tf, sx - tw / 2f, sy + enemyPxSize * 0.18f, tw, th)
-                        }
-                        // Smaller tumbling core + subtle licht glow (baked PNG flame secondary)
-                        rotate(degrees = e.angle, pivot = Offset(sx, sy)) {
-                            val glow = (tick / 10 + i) % 5 == 0
-                            val body = if (glow) (kometLicht ?: kometImg) else kometImg
-                            drawSpriteOrOval(body, sx, sy, enemyPxSize * 0.70f, e.type.color)
+                            if (flames.isNotEmpty()) {
+                                val ff = flames[(tick / 5 + i) % flames.size]
+                                val fw = coreSize * 0.85f
+                                val fh = coreSize * 1.05f
+                                val mouthY = fh / 12f // Top-Center pivot of flame
+                                drawImg(ff, sx - fw / 2f, sy + coreSize / 2f - mouthY, fw, fh)
+                            }
+                            val body = kometCore64 ?: kometImg
+                            drawSpriteOrOval(body, sx, sy, coreSize, e.type.color)
                         }
                     }
                     EnemyType.KOMET_BIG -> {
                         val edx = wrapDx(shipPx, e.x)
                         val edy = wrapDy(shipPy, e.y)
                         val heading = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
-                        val tf = thrustFrames64[(tick / 2 + i) % thrustFrames64.size]
-                        rotate(degrees = heading, pivot = Offset(sx, sy)) {
-                            val tw = bossPxSize * 0.85f
-                            val th = bossPxSize * 1.05f
-                            drawImg(tf, sx - tw / 2f, sy + bossPxSize * 0.22f, tw, th)
+                        val coreSize = bossPxSize * 0.78f
+                        val flames = when {
+                            kometFlame64.isNotEmpty() -> kometFlame64
+                            kometFlame48.isNotEmpty() -> kometFlame48
+                            else -> emptyList()
                         }
-                        rotate(degrees = e.angle, pivot = Offset(sx, sy)) {
-                            val glow = (tick / 10 + i) % 5 == 0
-                            val body = when {
-                                glow -> kometLicht128 ?: kometBigImg
-                                else -> kometBigImg ?: kometImg128
+                        rotate(degrees = heading, pivot = Offset(sx, sy)) {
+                            if (flames.isNotEmpty()) {
+                                val ff = flames[(tick / 5 + i) % flames.size]
+                                val fw = coreSize * 0.95f
+                                val fh = coreSize * 1.2f
+                                val mouthY = fh / 12f
+                                drawImg(ff, sx - fw / 2f, sy + coreSize / 2f - mouthY, fw, fh)
                             }
-                            drawSpriteOrOval(body, sx, sy, bossPxSize * 0.78f, e.type.color)
+                            val body = kometCore128 ?: kometBigImg ?: kometImg128
+                            drawSpriteOrOval(body, sx, sy, coreSize, e.type.color)
                             drawCircle(
                                 e.type.color.copy(alpha = 0.45f),
                                 bossPxSize * 0.42f,
@@ -840,17 +941,56 @@ fun PlayScreen(onExit: () -> Unit) {
                                 }
                                 drawSpriteOrOval(img, sx, sy, enemyPxSize * 0.95f, e.type.color)
                             }
+                            EnemyType.SCHNELL -> {
+                                val blink = (tick / 12 + i) % 2 == 0
+                                val img = when {
+                                    blink -> schnellImg80 ?: schnellImg
+                                    else -> schnellLicht ?: schnellImg
+                                }
+                                drawSpriteOrOval(img, sx, sy, enemyPxSize * 0.95f, e.type.color)
+                            }
+                            EnemyType.PANZER -> {
+                                val blink = (tick / 12 + i) % 2 == 0
+                                val img = when {
+                                    blink -> panzerImg128 ?: panzerImg80 ?: panzerImg
+                                    else -> panzerLicht ?: panzerImg
+                                }
+                                drawSpriteOrOval(img, sx, sy, tankPxSize * 0.92f, e.type.color)
+                                drawCircle(
+                                    e.type.color.copy(alpha = 0.35f),
+                                    tankPxSize * 0.42f,
+                                    Offset(sx, sy),
+                                    style = Stroke(width = 3f)
+                                )
+                            }
+                            EnemyType.DROHNE -> {
+                                val blink = (tick / 12 + i) % 2 == 0
+                                val img = when {
+                                    blink -> drohneImg80 ?: drohneImg
+                                    else -> drohneLicht ?: drohneImg
+                                }
+                                drawSpriteOrOval(img, sx, sy, swarmerPxSize * 1.05f, e.type.color)
+                            }
+                            EnemyType.BOMBER -> {
+                                val blink = (tick / 12 + i) % 2 == 0
+                                val img = when {
+                                    blink -> bomberImg80 ?: bomberImg
+                                    else -> bomberLicht ?: bomberImg
+                                }
+                                drawSpriteOrOval(img, sx, sy, enemyRundSize * 0.95f, e.type.color)
+                            }
                             EnemyType.KOMET, EnemyType.KOMET_BIG -> Unit
                         }
                     }
                 }
+
                 if (e.hp < e.maxHp) {
                     val barW = when (e.type) {
                         EnemyType.BOSS, EnemyType.KOMET_BIG -> bossPxSize
-                        EnemyType.TANK, EnemyType.FELS -> tankPxSize
+                        EnemyType.TANK, EnemyType.FELS, EnemyType.PANZER -> tankPxSize
                         EnemyType.LANG -> enemyLangH
-                        EnemyType.RUND -> enemyRundSize
-                        EnemyType.SWARMER -> swarmerPxSize
+                        EnemyType.RUND, EnemyType.BOMBER -> enemyRundSize
+                        EnemyType.SWARMER, EnemyType.DROHNE -> swarmerPxSize
                         else -> enemyPxSize
                     }
                     val top = sy - barW * 0.55f - 10f
@@ -915,7 +1055,7 @@ fun PlayScreen(onExit: () -> Unit) {
                 rotate(degrees = shipAngle, pivot = Offset(shipSx, shipSy)) {
                     val thrusting = isTouching || hypot(shipVx, shipVy) > 1.2f
                     if (thrusting) {
-                        val tf = thrustFrames[((tick / 2) % thrustFrames.size).coerceAtLeast(0)]
+                        val tf = thrustFrames[((tick / 5) % thrustFrames.size).coerceAtLeast(0)]
                         // Clear animated thrust at rear/mouth (~0.7–0.9 ship width), under hull
                         val tw = shipPxSize * 0.82f
                         val th = shipPxSize * 0.95f
@@ -939,101 +1079,227 @@ fun PlayScreen(onExit: () -> Unit) {
             if (shield > 0) {
                 drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(shipSx, shipSy))
             }
+            // HUD (hearts/bars/score/pause/banner) is Compose overlay with window insets
+        }
 
-            // --- Top-left: lives hearts + HP / energy bars ---
-            val hudLeft = 12f
-            val hudTop = 10f
-            repeat(lives.coerceAtLeast(0)) { i ->
-                drawImg(heartImg, hudLeft + i * 30f, hudTop, 26f, 26f)
+        // Safe HUD: below status bar / notch / cutout (edge-to-edge)
+        val hudInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+            .union(WindowInsets.statusBars)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(hudInsets)
+                .padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            // Top-left: hearts + thick HP / energy / shield bars + pause
+            Column(
+                modifier = Modifier.align(Alignment.TopStart),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    repeat(lives.coerceAtLeast(0)) {
+                        Image(
+                            bitmap = heartImg,
+                            contentDescription = null,
+                            modifier = Modifier.size(28.dp),
+                            contentScale = ContentScale.Fit
+                        )
+                    }
+                }
+                HudStatBar(
+                    fraction = (lives.toFloat() / maxLives.toFloat()).coerceIn(0f, 1f),
+                    track = Color(0xFF2A1A1A),
+                    fill = Color(0xFFE53935),
+                    heightDp = 14.dp,
+                    widthDp = 168.dp
+                )
+                HudStatBar(
+                    fraction = (energy / 100f).coerceIn(0f, 1f),
+                    track = Color(0xFF12202A),
+                    fill = Color(0xFF00E5FF),
+                    heightDp = 12.dp,
+                    widthDp = 168.dp
+                )
+                if (shield > 0) {
+                    HudStatBar(
+                        fraction = (shield / 420f).coerceIn(0f, 1f),
+                        track = Color(0xFF1A2A3A),
+                        fill = Color(0xFF69F0AE),
+                        heightDp = 10.dp,
+                        widthDp = 168.dp
+                    )
+                }
+                TextButton(
+                    onClick = { paused = !paused },
+                    modifier = Modifier.padding(start = 0.dp)
+                ) {
+                    Text(
+                        if (paused) "Weiter" else "Pause",
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp,
+                            shadow = Shadow(Color.Black, Offset(1.5f, 1.5f), 6f)
+                        )
+                    )
+                }
             }
-            val barLeft = hudLeft
-            val barW = 148f
-            val hpY = hudTop + 32f
-            val enY = hpY + 16f
-            // HP bar (thick)
-            drawRect(Color(0xFF2A1A1A), topLeft = Offset(barLeft, hpY), size = Size(barW, 11f))
-            drawRect(Color(0xFF4A2020), topLeft = Offset(barLeft, hpY), size = Size(barW, 11f), style = Stroke(width = 1.5f))
-            val hpFrac = (lives.toFloat() / maxLives.toFloat()).coerceIn(0f, 1f)
-            drawRect(
-                Color(0xFFE53935),
-                topLeft = Offset(barLeft, hpY),
-                size = Size(barW * hpFrac, 11f)
-            )
-            // Energy / reactor bar
-            drawRect(Color(0xFF12202A), topLeft = Offset(barLeft, enY), size = Size(barW, 9f))
-            drawRect(Color(0xFF1A3A4A), topLeft = Offset(barLeft, enY), size = Size(barW, 9f), style = Stroke(width = 1.5f))
-            val enFrac = (energy / 100f).coerceIn(0f, 1f)
-            drawRect(
-                Color(0xFF00E5FF),
-                topLeft = Offset(barLeft, enY),
-                size = Size(barW * enFrac, 9f)
-            )
-            // Optional shield bar when active
-            if (shield > 0) {
-                val shY = enY + 14f
-                drawRect(Color(0xFF1A2A3A), topLeft = Offset(barLeft, shY), size = Size(barW, 7f))
-                val shFrac = (shield / 420f).coerceIn(0f, 1f)
-                drawRect(
-                    Color(0xFF69F0AE),
-                    topLeft = Offset(barLeft, shY),
-                    size = Size(barW * shFrac, 7f)
+
+            // Top-right: score / wave + mode chips
+            Column(
+                modifier = Modifier.align(Alignment.TopEnd),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .background(Color(0xCC0A0A18), RoundedCornerShape(10.dp))
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        "Score $score  ·  Hi $high\nWelle $wave",
+                        color = Color.White,
+                        textAlign = TextAlign.End,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            lineHeight = 22.sp,
+                            shadow = Shadow(Color.Black, Offset(1.5f, 1.5f), 8f)
+                        )
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (speedBoost > 0) HudModeChip(puSpeed, Color(0xFF00E5FF))
+                    if (shield > 0) HudModeChip(puHeal, Color(0xFF69F0AE))
+                    if (multishot > 0) HudModeChip(puWeapon, Color(0xFFFF5252))
+                }
+            }
+
+            // Banner under top HUD
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 56.dp)
+                    .background(Color(0xAA120C08), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    banner,
+                    color = Color(0xFFFFE0A0),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        shadow = Shadow(Color.Black, Offset(1f, 1f), 6f)
+                    )
                 )
             }
 
-            // Mode status chips in HUD (not on ship) — top-right under score area
-            val chipSize = 34f
-            var chipX = size.width - 16f - chipSize
-            val chipY = 40f
-            val modeChips = buildList {
-                if (speedBoost > 0) add(puSpeed to Color(0xFF00E5FF))
-                if (shield > 0) add(puHeal to Color(0xFF69F0AE))
-                if (multishot > 0) add(puWeapon to Color(0xFFFF5252))
-            }
-            for ((img, ring) in modeChips) {
-                val cx = chipX + chipSize / 2f
-                val cy = chipY + chipSize / 2f
-                drawCircle(ring.copy(alpha = 0.20f), chipSize * 0.62f, Offset(cx, cy))
-                drawCircle(ring.copy(alpha = 0.85f), chipSize * 0.55f, Offset(cx, cy), style = Stroke(width = 2f))
-                drawImg(img, chipX + 3f, chipY + 3f, chipSize - 6f, chipSize - 6f)
-                chipX -= chipSize + 8f
-            }
-
             if (isBossActive) {
-                val bossBarW = size.width * 0.7f
-                val barX = (size.width - bossBarW) / 2f
-                val barY = 102f
-                drawRect(Color(0xFF35123D), topLeft = Offset(barX, barY), size = Size(bossBarW, 12f))
-                val frac = (bossHpCurrent / bossHpMax.coerceAtLeast(1f)).coerceIn(0f, 1f)
-                drawRect(Color(0xFFE040FB), topLeft = Offset(barX, barY), size = Size(bossBarW * frac, 12f))
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 96.dp)
+                        .fillMaxWidth(0.78f),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        "SECTOR BOSS",
+                        color = Color(0xFFE040FB),
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            shadow = Shadow(Color.Black, Offset(1f, 1f), 4f)
+                        )
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    HudStatBar(
+                        fraction = (bossHpCurrent / bossHpMax.coerceAtLeast(1f)).coerceIn(0f, 1f),
+                        track = Color(0xFF35123D),
+                        fill = Color(0xFFE040FB),
+                        heightDp = 14.dp,
+                        widthDp = 280.dp
+                    )
+                }
             }
-        }
 
-        Text(
-            "Score $score   Hi $high   Welle $wave",
-            color = Color(0xFFF2E6D0),
-            fontSize = 13.sp,
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 12.dp)
-        )
-        Text(
-            banner,
-            color = Color(0xFFC9A66B),
-            fontSize = 13.sp,
-            modifier = Modifier.align(Alignment.TopCenter).padding(top = 78.dp)
-        )
-        TextButton(
-            onClick = { paused = !paused },
-            modifier = Modifier.align(Alignment.TopStart).padding(start = 4.dp, top = 70.dp)
-        ) {
-            Text(if (paused) "Weiter" else "Pause", color = Color.White, fontSize = 14.sp)
-        }
-        if (paused) {
-            Text("Pause", color = Color.White, fontSize = 18.sp, modifier = Modifier.align(Alignment.Center))
-        }
-        if (gameOver) {
-            TextButton(onClick = onExit, modifier = Modifier.align(Alignment.BottomCenter).padding(32.dp)) {
-                Text("Nochmal / Menü", color = Color.White, fontSize = 16.sp)
+            if (paused) {
+                Text(
+                    "Pause",
+                    color = Color.White,
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontFamily = FontFamily.SansSerif,
+                        fontWeight = FontWeight.Bold,
+                        shadow = Shadow(Color.Black, Offset(2f, 2f), 10f)
+                    ),
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
+            if (gameOver) {
+                TextButton(
+                    onClick = onExit,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 24.dp)
+                        .background(Color(0xCC1A1020), RoundedCornerShape(12.dp))
+                ) {
+                    Text(
+                        "Nochmal / Menü",
+                        color = Color.White,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun HudStatBar(
+    fraction: Float,
+    track: Color,
+    fill: Color,
+    heightDp: Dp,
+    widthDp: Dp
+) {
+    Box(
+        modifier = Modifier
+            .width(widthDp)
+            .height(heightDp)
+            .shadow(2.dp, RoundedCornerShape(6.dp))
+            .background(track, RoundedCornerShape(6.dp))
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .fillMaxWidth(fraction.coerceIn(0f, 1f))
+                .background(fill, RoundedCornerShape(6.dp))
+        )
+    }
+}
+
+@Composable
+private fun HudModeChip(img: ImageBitmap, ring: Color) {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .background(ring.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
+            .padding(4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            bitmap = img,
+            contentDescription = null,
+            modifier = Modifier.size(30.dp),
+            contentScale = ContentScale.Fit
+        )
     }
 }
 
