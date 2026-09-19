@@ -18,11 +18,9 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -38,9 +36,18 @@ import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
 
-/** Large fixed portrait map (no wrap — ship clamps at edges). */
+/** Large portrait map with toroidal wrap (no walls). */
 private const val WORLD_W = 8000f
 private const val WORLD_H = 12000f
+
+private fun wrapCoord(v: Float, size: Float): Float = ((v % size) + size) % size
+
+/** Shortest signed delta on a toroidal axis. */
+private fun wrapDelta(d: Float, size: Float): Float {
+    var v = ((d % size) + size) % size
+    if (v > size * 0.5f) v -= size
+    return v
+}
 
 private enum class EnemyType(
     val baseRadius: Float,
@@ -53,6 +60,8 @@ private enum class EnemyType(
     SCOUT(22f, 3.0f, 3, Color(0xFFFF5252), 25),
     TANK(38f, 1.4f, 10, Color(0xFFFF9100), 75),
     BOSS(65f, 0.9f, 60, Color(0xFFE040FB), 500),
+    LANG(20f, 2.8f, 4, Color(0xFF82B1FF), 35),
+    RUND(28f, 2.0f, 6, Color(0xFFFF80AB), 45),
     KOMET(22f, 3.2f, 2, Color(0xFFFFAB40), 20),
     KOMET_BIG(65f, 0.75f, 18, Color(0xFFFF6D00), 400),
     ASTEROID(24f, 2.2f, 3, Color(0xFFBCAAA4), 15),
@@ -65,7 +74,8 @@ private fun EnemyType.isBossLike(): Boolean =
     this == EnemyType.BOSS || this == EnemyType.KOMET_BIG
 
 private fun EnemyType.canShoot(): Boolean = when (this) {
-    EnemyType.SCOUT, EnemyType.TANK, EnemyType.BOSS, EnemyType.JAEGER -> true
+    EnemyType.SCOUT, EnemyType.TANK, EnemyType.BOSS, EnemyType.JAEGER,
+    EnemyType.LANG, EnemyType.RUND -> true
     else -> false
 }
 
@@ -127,6 +137,10 @@ fun PlayScreen(onExit: () -> Unit) {
 
     val shipPxSize = with(density) { 68.dp.toPx() }
     val enemyPxSize = with(density) { 48.dp.toPx() }
+    val swarmerPxSize = with(density) { 40.dp.toPx() }
+    val enemyLangW = with(density) { 46.dp.toPx() }
+    val enemyLangH = with(density) { 72.dp.toPx() }
+    val enemyRundSize = with(density) { 64.dp.toPx() }
     val tankPxSize = with(density) { 96.dp.toPx() }
     val bossPxSize = with(density) { 140.dp.toPx() }
     val bulletW = with(density) { 14.dp.toPx() }
@@ -141,7 +155,21 @@ fun PlayScreen(onExit: () -> Unit) {
     val shipTriple = remember { loadStargameAsset(context, "player_glocke_triple_128.png") }
     val enemyImg = remember { loadStargameAsset(context, "enemy_stoerer_64.png") }
     val enemyImgB = remember { loadStargameAsset(context, "enemy_stoerer_b_64.png") }
+    val enemySwarmer = remember { loadStargameAsset(context, "enemy_stoerer_48.png") }
+    val enemyTank = remember { loadStargameAsset(context, "enemy_stoerer_big_96.png") }
     val enemyBig = remember { loadStargameAsset(context, "enemy_stoerer_big_128.png") }
+    val schiffLang = remember { loadStargameAsset(context, "schiff_lang.png") }
+    val schiffLangLicht = remember { loadStargameAsset(context, "schiff_lang_licht.png") }
+    val schiffRund = remember { loadStargameAsset(context, "schiff_rund.png") }
+    val schiffRundLicht = remember { loadStargameAsset(context, "schiff_rund_licht.png") }
+    val thrustFrames = remember {
+        listOf(
+            loadStargameAsset(context, "fx_thrust_1_48.png"),
+            loadStargameAsset(context, "fx_thrust_2_48.png"),
+            loadStargameAsset(context, "fx_thrust_3_48.png"),
+            loadStargameAsset(context, "fx_thrust_4_48.png"),
+        )
+    }
 
     val bulletImg = remember { loadStargameAsset(context, "bullet_player.png") }
     val bulletTriple = remember { loadStargameAsset(context, "bullet_player_triple.png") }
@@ -153,14 +181,19 @@ fun PlayScreen(onExit: () -> Unit) {
     val bgDebris = remember { loadStargameAssetOrNull(context, "bg_debris.png") }
     val kometImg = remember { loadStargameAssetOrNull(context, "enemy_komet_64.png") }
     val kometLicht = remember { loadStargameAssetOrNull(context, "enemy_komet_licht_64.png") }
+    val kometImg128 = remember { loadStargameAssetOrNull(context, "enemy_komet_128.png") }
+    val kometLicht128 = remember { loadStargameAssetOrNull(context, "enemy_komet_licht_128.png") }
     val kometBigImg = remember { loadStargameAssetOrNull(context, "enemy_komet_big_128.png") }
     val asteroidImg = remember { loadStargameAssetOrNull(context, "enemy_asteroid_64.png") }
     val asteroidImgB = remember { loadStargameAssetOrNull(context, "enemy_asteroid_b_64.png") }
+    val asteroidImg80 = remember { loadStargameAssetOrNull(context, "enemy_asteroid_80.png") }
     val felsImg = remember { loadStargameAssetOrNull(context, "enemy_asteroid_big_128.png") }
     val jaegerImg = remember { loadStargameAssetOrNull(context, "enemy_jaeger_64.png") }
     val jaegerLicht = remember { loadStargameAssetOrNull(context, "enemy_jaeger_licht_64.png") }
+    val jaegerImg80 = remember { loadStargameAssetOrNull(context, "enemy_jaeger_80.png") }
     val mineImg = remember { loadStargameAssetOrNull(context, "enemy_mine_64.png") }
     val mineLicht = remember { loadStargameAssetOrNull(context, "enemy_mine_licht_64.png") }
+    val mineImg80 = remember { loadStargameAssetOrNull(context, "enemy_mine_80.png") }
     val heartImg = remember { loadStargameAsset(context, "ui_heart.png") }
     val puWeapon = remember { loadStargameAsset(context, "icon_mode_weapon_64.png") }
     val puHeal = remember { loadStargameAsset(context, "icon_mode_heal_64.png") }
@@ -239,15 +272,22 @@ fun PlayScreen(onExit: () -> Unit) {
     }
 
     fun enemyHitRadius(type: EnemyType): Float = when (type) {
-        EnemyType.SWARMER -> type.baseRadius * 1.2f
+        EnemyType.SWARMER -> swarmerPxSize * 0.45f
         EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.KOMET, EnemyType.ASTEROID, EnemyType.MINE ->
             enemyPxSize * 0.45f
+        EnemyType.LANG -> max(enemyLangW, enemyLangH) * 0.42f
+        EnemyType.RUND -> enemyRundSize * 0.45f
         EnemyType.TANK, EnemyType.FELS -> tankPxSize * 0.45f
         EnemyType.BOSS, EnemyType.KOMET_BIG -> bossPxSize * 0.45f
     }
 
-    fun clampWorld(x: Float, y: Float, pad: Float = 40f): Pair<Float, Float> =
-        x.coerceIn(pad, WORLD_W - pad) to y.coerceIn(pad, WORLD_H - pad)
+    fun wrapWorld(x: Float, y: Float): Pair<Float, Float> =
+        wrapCoord(x, WORLD_W) to wrapCoord(y, WORLD_H)
+
+    fun wrapDx(ax: Float, bx: Float): Float = wrapDelta(ax - bx, WORLD_W)
+    fun wrapDy(ay: Float, by: Float): Float = wrapDelta(ay - by, WORLD_H)
+    fun wrapDist(ax: Float, ay: Float, bx: Float, by: Float): Float =
+        hypot(wrapDx(ax, bx), wrapDy(ay, by))
 
     LaunchedEffect(w, h) {
         if (w > 10f && h > 10f && fingerX == 540f && fingerY == 700f) {
@@ -299,31 +339,35 @@ fun PlayScreen(onExit: () -> Unit) {
             shipPx += shipVx
             shipPy += shipVy
 
-            // Soft bounce at fixed world edges (no wrap)
-            val edgePad = shipPxSize * 0.4f
-            if (shipPx < edgePad) { shipPx = edgePad; shipVx = abs(shipVx) * 0.35f }
-            if (shipPx > WORLD_W - edgePad) { shipPx = WORLD_W - edgePad; shipVx = -abs(shipVx) * 0.35f }
-            if (shipPy < edgePad) { shipPy = edgePad; shipVy = abs(shipVy) * 0.35f }
-            if (shipPy > WORLD_H - edgePad) { shipPy = WORLD_H - edgePad; shipVy = -abs(shipVy) * 0.35f }
+            // Toroidal wrap — leave left, appear right (no walls / bounce)
+            val prevShipX = shipPx
+            val prevShipY = shipPy
+            shipPx = wrapCoord(shipPx, WORLD_W)
+            shipPy = wrapCoord(shipPy, WORLD_H)
+            val shipWrapped = shipPx != prevShipX || shipPy != prevShipY
 
-            // Soft camera margins (bafbb47 feel); camera stays inside map
-            val marginX = sw * 0.22f
-            val marginY = sh * 0.22f
-            val targetCamX = when {
-                shipPx < camX - marginX -> shipPx + marginX
-                shipPx > camX + marginX -> shipPx - marginX
-                else -> camX
+            // Soft camera margins; on wrap snap cam to ship to avoid jump artifact
+            if (shipWrapped) {
+                camX = shipPx
+                camY = shipPy
+            } else {
+                val marginX = sw * 0.22f
+                val marginY = sh * 0.22f
+                val targetCamX = when {
+                    shipPx < camX - marginX -> shipPx + marginX
+                    shipPx > camX + marginX -> shipPx - marginX
+                    else -> camX
+                }
+                val targetCamY = when {
+                    shipPy < camY - marginY -> shipPy + marginY
+                    shipPy > camY + marginY -> shipPy - marginY
+                    else -> camY
+                }
+                camX += (targetCamX - camX) * 0.12f
+                camY += (targetCamY - camY) * 0.12f
+                camX = wrapCoord(camX, WORLD_W)
+                camY = wrapCoord(camY, WORLD_H)
             }
-            val targetCamY = when {
-                shipPy < camY - marginY -> shipPy + marginY
-                shipPy > camY + marginY -> shipPy - marginY
-                else -> camY
-            }
-            camX += (targetCamX - camX) * 0.12f
-            camY += (targetCamY - camY) * 0.12f
-            // Keep camera from showing past map edges when possible
-            camX = camX.coerceIn(sw / 2f, (WORLD_W - sw / 2f).coerceAtLeast(sw / 2f))
-            camY = camY.coerceIn(sh / 2f, (WORLD_H - sh / 2f).coerceAtLeast(sh / 2f))
 
             bgOffsetX = -camX
             bgOffsetY = -camY
@@ -362,26 +406,25 @@ fun PlayScreen(onExit: () -> Unit) {
             if (shield > 0) shield--
             if (speedBoost > 0) speedBoost--
 
-            val enemiesPerWave = 10 + wave * 5
+            val enemiesPerWave = 16 + wave * 6
             if (awaitingBoss && enemies.isEmpty() && bullets.none { !it.fromPlayer }) {
                 awaitingBoss = false
                 isBossActive = true
-                val bossHp = 45 + wave * 25
+                val bossHp = 60 + wave * 32
                 bossHpMax = bossHp.toFloat()
                 bossHpCurrent = bossHp.toFloat()
                 banner = "⚠ SECTOR BOSS ⚠"
                 val spawnAngle = Random.nextFloat() * 2f * PI.toFloat()
                 val spawnDist = max(sw, sh) * 0.85f + 120f
-                val (bx, by) = clampWorld(
+                val (bx, by) = wrapWorld(
                     shipPx + cos(spawnAngle) * spawnDist,
                     shipPy + sin(spawnAngle) * spawnDist,
-                    80f
                 )
                 val bossType = if (wave >= 6 && Random.nextBoolean()) EnemyType.KOMET_BIG else EnemyType.BOSS
                 enemies += Enemy(
                     x = bx, y = by,
-                    hp = if (bossType == EnemyType.KOMET_BIG) EnemyType.KOMET_BIG.maxHp + wave * 2 else bossHp,
-                    maxHp = if (bossType == EnemyType.KOMET_BIG) EnemyType.KOMET_BIG.maxHp + wave * 2 else bossHp,
+                    hp = if (bossType == EnemyType.KOMET_BIG) EnemyType.KOMET_BIG.maxHp + wave * 4 + 8 else bossHp,
+                    maxHp = if (bossType == EnemyType.KOMET_BIG) EnemyType.KOMET_BIG.maxHp + wave * 4 + 8 else bossHp,
                     fireCd = 40, type = bossType
                 )
                 if (bossType == EnemyType.KOMET_BIG) {
@@ -390,23 +433,26 @@ fun PlayScreen(onExit: () -> Unit) {
                 }
             } else if (!isBossActive && !awaitingBoss) {
                 if (spawnCd > 0) spawnCd-- else if (spawned < enemiesPerWave) {
-                    spawnCd = max(18, 60 - wave * 4)
+                    spawnCd = max(22, 72 - wave * 3)
                     val spawnAngle = Random.nextFloat() * 2f * PI.toFloat()
                     val spawnDist = max(sw, sh) * 0.75f + 80f
-                    val (ex, ey) = clampWorld(
+                    val (ex, ey) = wrapWorld(
                         shipPx + cos(spawnAngle) * spawnDist,
                         shipPy + sin(spawnAngle) * spawnDist,
-                        60f
                     )
 
+                    // All PNG types; stoerer+lang+rund often; ASTEROID~15% KOMET~8%
+                    val r = Random.nextFloat()
                     val type = when {
-                        Random.nextFloat() < 0.25f -> EnemyType.ASTEROID
-                        Random.nextFloat() < 0.15f -> EnemyType.KOMET
-                        wave >= 3 && Random.nextFloat() < 0.18f ->
+                        r < 0.15f -> EnemyType.ASTEROID
+                        r < 0.23f -> EnemyType.KOMET
+                        wave >= 3 && r < 0.31f ->
                             if (Random.nextBoolean()) EnemyType.MINE else EnemyType.FELS
-                        wave >= 2 && Random.nextFloat() < 0.18f -> EnemyType.TANK
-                        wave >= 2 && Random.nextFloat() < 0.30f -> EnemyType.SWARMER
-                        wave >= 2 && Random.nextFloat() < 0.40f -> EnemyType.JAEGER
+                        wave >= 2 && r < 0.40f -> EnemyType.TANK
+                        r < 0.52f -> EnemyType.SWARMER
+                        r < 0.64f -> EnemyType.LANG
+                        r < 0.74f -> EnemyType.RUND
+                        wave >= 2 && r < 0.86f -> EnemyType.JAEGER
                         else -> EnemyType.SCOUT
                     }
 
@@ -419,13 +465,13 @@ fun PlayScreen(onExit: () -> Unit) {
                     )
                     spawned++
                 } else if (enemies.isEmpty() && bullets.none { !it.fromPlayer }) {
-                    if (wave % 3 == 0) {
+                    if (wave % 4 == 0) {
                         awaitingBoss = true
                         banner = "Boss-Signatur erkannt…"
                     } else {
                         wave++
                         spawned = 0
-                        spawnCd = 50
+                        spawnCd = 70
                         banner = "Welle $wave!"
                     }
                 }
@@ -433,8 +479,8 @@ fun PlayScreen(onExit: () -> Unit) {
 
             val minesToBoom = mutableListOf<Enemy>()
             enemies.forEach { e ->
-                val edx = shipPx - e.x
-                val edy = shipPy - e.y
+                val edx = wrapDx(shipPx, e.x)
+                val edy = wrapDy(shipPy, e.y)
                 val dist = hypot(edx, edy)
 
                 when (e.type) {
@@ -451,9 +497,9 @@ fun PlayScreen(onExit: () -> Unit) {
                     e.x += (edx / dist) * eSpeed
                     e.y += (edy / dist) * eSpeed
                 }
-                val clamped = clampWorld(e.x, e.y, 30f)
-                e.x = clamped.first
-                e.y = clamped.second
+                val wrapped = wrapWorld(e.x, e.y)
+                e.x = wrapped.first
+                e.y = wrapped.second
 
                 if (e.type == EnemyType.MINE && dist < 70f) {
                     minesToBoom += e
@@ -462,7 +508,8 @@ fun PlayScreen(onExit: () -> Unit) {
                 if (e.type.canShoot()) {
                     if (e.fireCd > 0) e.fireCd-- else {
                         e.fireCd = when (e.type) {
-                            EnemyType.SCOUT, EnemyType.JAEGER -> 90 - wave * 3
+                            EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.LANG -> 90 - wave * 3
+                            EnemyType.RUND -> 80 - wave * 2
                             EnemyType.TANK -> 70 - wave * 2
                             EnemyType.BOSS -> 35
                             else -> 100
@@ -478,14 +525,14 @@ fun PlayScreen(onExit: () -> Unit) {
                             val ebvx = (edx / dist) * ebSpeed
                             val ebvy = (edy / dist) * ebSpeed
 
-                            if (e.type == EnemyType.BOSS || e.type == EnemyType.TANK) {
+                            if (e.type == EnemyType.BOSS || e.type == EnemyType.TANK || e.type == EnemyType.RUND) {
                                 val sp1 = (faceAng - 90f - 18f) * PI / 180.0
                                 val sp2 = (faceAng - 90f + 18f) * PI / 180.0
                                 bullets += Bullet(e.x, e.y, ebvx, ebvy, faceAng, false)
                                 bullets += Bullet(e.x, e.y, (cos(sp1) * ebSpeed).toFloat(), (sin(sp1) * ebSpeed).toFloat(), faceAng - 18f, false)
                                 bullets += Bullet(e.x, e.y, (cos(sp2) * ebSpeed).toFloat(), (sin(sp2) * ebSpeed).toFloat(), faceAng + 18f, false)
                             } else {
-                                // SCOUT / JAEGER: single shot aimed at player
+                                // SCOUT / JAEGER / LANG: single shot aimed at player
                                 bullets += Bullet(e.x, e.y, ebvx, ebvy, faceAng, false)
                             }
                         }
@@ -501,21 +548,35 @@ fun PlayScreen(onExit: () -> Unit) {
             }
 
             bullets.forEach { it.x += it.vx; it.y += it.vy }
-            powerups.forEach { it.y += 0.35f }
-            fx.forEach { it.life-- }
+            powerups.forEach {
+                it.y += 0.35f
+                val wp = wrapWorld(it.x, it.y)
+                it.x = wp.first
+                it.y = wp.second
+            }
+            fx.forEach {
+                it.life--
+                val wf = wrapWorld(it.x, it.y)
+                it.x = wf.first
+                it.y = wf.second
+            }
             fx.removeAll { it.life <= 0 }
 
-            // Despawn by distance from ship (world space), not screen sw/sh
+            // Bullets: despawn far away (no wrap — avoids rear hits across seam)
             val bulletMaxDist = max(sw, sh) * 1.6f + 200f
-            bullets.removeAll { hypot(it.x - shipPx, it.y - shipPy) > bulletMaxDist }
-            powerups.removeAll { hypot(it.x - shipPx, it.y - shipPy) > bulletMaxDist * 1.2f }
+            bullets.removeAll {
+                hypot(it.x - shipPx, it.y - shipPy) > bulletMaxDist ||
+                    it.x < -200f || it.x > WORLD_W + 200f ||
+                    it.y < -200f || it.y > WORLD_H + 200f
+            }
+            powerups.removeAll { wrapDist(it.x, it.y, shipPx, shipPy) > bulletMaxDist * 1.2f }
 
             val hitEnemies = mutableSetOf<Enemy>()
             val hitBullets = mutableSetOf<Bullet>()
             for (b in bullets.filter { it.fromPlayer }) {
                 for (e in enemies) {
                     val r = enemyHitRadius(e.type)
-                    if (hypot(b.x - e.x, b.y - e.y) < r) {
+                    if (wrapDist(b.x, b.y, e.x, e.y) < r) {
                         hitBullets += b
                         e.hp--
                         fx += Fx(e.x, e.y, 8, 0)
@@ -532,7 +593,7 @@ fun PlayScreen(onExit: () -> Unit) {
                                 isBossActive = false
                                 wave++
                                 spawned = 0
-                                spawnCd = 60
+                                spawnCd = 80
                                 banner = "Boss vernichtet! Welle $wave"
                                 if (score > high) {
                                     high = score
@@ -550,7 +611,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
             val enemyHits = mutableSetOf<Bullet>()
             for (b in bullets.filter { !it.fromPlayer }) {
-                if (hypot(b.x - shipPx, b.y - shipPy) < shipPxSize * 0.32f) {
+                if (wrapDist(b.x, b.y, shipPx, shipPy) < shipPxSize * 0.32f) {
                     enemyHits += b
                     fx += Fx(shipPx, shipPy, 10, 0)
                     hurtPlayer()
@@ -560,7 +621,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
             enemies.toList().forEach { e ->
                 val r = enemyHitRadius(e.type)
-                if (hypot(e.x - shipPx, e.y - shipPy) < (r + shipPxSize * 0.30f)) {
+                if (wrapDist(e.x, e.y, shipPx, shipPy) < (r + shipPxSize * 0.30f)) {
                     fx += Fx(e.x, e.y, 14, 1)
                     if (!e.type.isBossLike()) {
                         enemies.remove(e)
@@ -571,7 +632,7 @@ fun PlayScreen(onExit: () -> Unit) {
 
             val got = mutableSetOf<PowerUp>()
             for (p in powerups) {
-                if (hypot(p.x - shipPx, p.y - shipPy) < 48f) {
+                if (wrapDist(p.x, p.y, shipPx, shipPy) < 48f) {
                     got += p
                     sfx.pickup()
                     when (p.type) {
@@ -621,14 +682,14 @@ fun PlayScreen(onExit: () -> Unit) {
             h = size.height
 
             drawRect(Color(0xFF050510))
-            val toSx = { wx: Float -> wx - camX + size.width / 2f }
-            val toSy = { wy: Float -> wy - camY + size.height / 2f }
+            val toSx = { wx: Float -> wrapDelta(wx - camX, WORLD_W) + size.width / 2f }
+            val toSy = { wy: Float -> wrapDelta(wy - camY, WORLD_H) + size.height / 2f }
 
-            drawMirroredTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
-            bgNebula?.let { drawMirroredTiled(it, bgOffsetX * 0.35f, bgOffsetY * 0.35f, w, h) }
-            drawMirroredTiled(starMid, bgOffsetX * 0.50f, bgOffsetY * 0.50f, w, h)
-            drawMirroredTiled(starNear, bgOffsetX * 0.90f, bgOffsetY * 0.90f, w, h)
-            bgDebris?.let { drawMirroredTiled(it, bgOffsetX * 0.95f, bgOffsetY * 0.95f, w, h) }
+            drawSeamlessTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
+            bgNebula?.let { drawSeamlessTiled(it, bgOffsetX * 0.20f, bgOffsetY * 0.20f, w, h, alpha = 0.45f) }
+            drawSeamlessTiled(starMid, bgOffsetX * 0.50f, bgOffsetY * 0.50f, w, h)
+            drawSeamlessTiled(starNear, bgOffsetX * 0.90f, bgOffsetY * 0.90f, w, h)
+            bgDebris?.let { drawSeamlessTiled(it, bgOffsetX * 0.55f, bgOffsetY * 0.55f, w, h, alpha = 0.38f) }
 
             val half = shipPxSize / 2f
 
@@ -638,23 +699,30 @@ fun PlayScreen(onExit: () -> Unit) {
                 rotate(degrees = e.angle, pivot = Offset(sx, sy)) {
                     when (e.type) {
                         EnemyType.SWARMER -> {
-                            val r = e.type.baseRadius * 1.35f
-                            val path = Path().apply {
-                                moveTo(sx, sy - r)
-                                lineTo(sx + r, sy)
-                                lineTo(sx, sy + r)
-                                lineTo(sx - r, sy)
-                                close()
-                            }
-                            drawPath(path, e.type.color)
-                            drawPath(path, Color.White.copy(alpha = 0.35f), style = Stroke(width = 2f))
+                            drawImg(
+                                enemySwarmer,
+                                sx - swarmerPxSize / 2f,
+                                sy - swarmerPxSize / 2f,
+                                swarmerPxSize,
+                                swarmerPxSize
+                            )
                         }
                         EnemyType.SCOUT -> {
                             val img = if ((tick / 12 + i) % 2 == 0) enemyImg else enemyImgB
                             drawImg(img, sx - enemyPxSize / 2f, sy - enemyPxSize / 2f, enemyPxSize, enemyPxSize)
                         }
+                        EnemyType.LANG -> {
+                            val blink = (tick / 12 + i) % 2 == 0
+                            val img = if (blink) schiffLang else schiffLangLicht
+                            drawImg(img, sx - enemyLangW / 2f, sy - enemyLangH / 2f, enemyLangW, enemyLangH)
+                        }
+                        EnemyType.RUND -> {
+                            val blink = (tick / 12 + i) % 2 == 0
+                            val img = if (blink) schiffRund else schiffRundLicht
+                            drawImg(img, sx - enemyRundSize / 2f, sy - enemyRundSize / 2f, enemyRundSize, enemyRundSize)
+                        }
                         EnemyType.TANK -> {
-                            drawImg(enemyBig, sx - tankPxSize / 2f, sy - tankPxSize / 2f, tankPxSize, tankPxSize)
+                            drawImg(enemyTank, sx - tankPxSize / 2f, sy - tankPxSize / 2f, tankPxSize, tankPxSize)
                             drawCircle(
                                 e.type.color.copy(alpha = 0.35f),
                                 tankPxSize * 0.42f,
@@ -674,8 +742,15 @@ fun PlayScreen(onExit: () -> Unit) {
                         }
                         EnemyType.KOMET -> {
                             val blink = (tick / 12 + i) % 2 == 0
-                            val img = if (blink) kometImg else (kometLicht ?: kometImg)
-                            drawSpriteOrOval(img, sx, sy, enemyPxSize, e.type.color)
+                            val useBig = (tick / 24 + i) % 3 == 0
+                            val img = when {
+                                useBig && blink -> kometImg128 ?: kometImg
+                                useBig -> kometLicht128 ?: kometLicht ?: kometImg
+                                blink -> kometImg
+                                else -> kometLicht ?: kometImg
+                            }
+                            val sz = if (useBig) enemyPxSize * 1.25f else enemyPxSize
+                            drawSpriteOrOval(img, sx, sy, sz, e.type.color)
                         }
                         EnemyType.KOMET_BIG -> {
                             drawSpriteOrOval(kometBigImg, sx, sy, bossPxSize, e.type.color)
@@ -687,9 +762,14 @@ fun PlayScreen(onExit: () -> Unit) {
                             )
                         }
                         EnemyType.ASTEROID -> {
-                            val blink = (tick / 12 + i) % 2 == 0
-                            val img = if (blink) asteroidImg else (asteroidImgB ?: asteroidImg)
-                            drawSpriteOrOval(img, sx, sy, enemyPxSize, e.type.color)
+                            val phase = (tick / 12 + i) % 3
+                            val img = when (phase) {
+                                0 -> asteroidImg
+                                1 -> asteroidImgB ?: asteroidImg
+                                else -> asteroidImg80 ?: asteroidImg
+                            }
+                            val sz = if (phase == 2) enemyPxSize * 1.15f else enemyPxSize
+                            drawSpriteOrOval(img, sx, sy, sz, e.type.color)
                         }
                         EnemyType.FELS -> {
                             drawSpriteOrOval(felsImg, sx, sy, tankPxSize, e.type.color)
@@ -702,20 +782,29 @@ fun PlayScreen(onExit: () -> Unit) {
                         }
                         EnemyType.JAEGER -> {
                             val blink = (tick / 12 + i) % 2 == 0
-                            val img = if (blink) jaegerImg else (jaegerLicht ?: jaegerImg)
-                            drawSpriteOrOval(img, sx, sy, enemyPxSize, e.type.color)
+                            val img = when {
+                                blink -> jaegerImg80 ?: jaegerImg
+                                else -> jaegerLicht ?: jaegerImg
+                            }
+                            drawSpriteOrOval(img, sx, sy, enemyPxSize * 1.1f, e.type.color)
                         }
                         EnemyType.MINE -> {
                             val blink = (tick / 12 + i) % 2 == 0
-                            val img = if (blink) mineImg else (mineLicht ?: mineImg)
-                            drawSpriteOrOval(img, sx, sy, enemyPxSize * 0.9f, e.type.color)
+                            val img = when {
+                                blink -> mineImg80 ?: mineImg
+                                else -> mineLicht ?: mineImg
+                            }
+                            drawSpriteOrOval(img, sx, sy, enemyPxSize * 0.95f, e.type.color)
                         }
                     }
                 }
-                if (e.type != EnemyType.SWARMER && e.hp < e.maxHp) {
+                if (e.hp < e.maxHp) {
                     val barW = when (e.type) {
                         EnemyType.BOSS, EnemyType.KOMET_BIG -> bossPxSize
                         EnemyType.TANK, EnemyType.FELS -> tankPxSize
+                        EnemyType.LANG -> enemyLangH
+                        EnemyType.RUND -> enemyRundSize
+                        EnemyType.SWARMER -> swarmerPxSize
                         else -> enemyPxSize
                     }
                     val top = sy - barW * 0.55f - 10f
@@ -778,6 +867,15 @@ fun PlayScreen(onExit: () -> Unit) {
                 drawImg(d, shipSx - ds / 2f, shipSy - ds / 2f, ds, ds)
             } else if (iFrames == 0 || (tick / 3) % 2 == 0) {
                 rotate(degrees = shipAngle, pivot = Offset(shipSx, shipSy)) {
+                    val thrusting = isTouching || hypot(shipVx, shipVy) > 1.2f
+                    if (thrusting) {
+                        val tf = thrustFrames[(tick / 4) % thrustFrames.size]
+                        val tw = shipPxSize * 0.50f
+                        val th = shipPxSize * 0.55f
+                        // Tip-up hull: thrust mouth at bottom of sprite
+                        val ty = shipSy + half - th * 0.20f
+                        drawImg(tf, shipSx - tw / 2f, ty, tw, th)
+                    }
                     val ship = if (multishot > 0) shipTriple else shipSingle
                     drawImg(ship, shipSx - half, shipSy - half, shipPxSize, shipPxSize)
 
@@ -856,33 +954,44 @@ private fun DrawScope.drawSpriteOrOval(img: ImageBitmap?, cx: Float, cy: Float, 
     }
 }
 
-private fun DrawScope.drawMirroredTiled(img: ImageBitmap, offX: Float, offY: Float, sw: Float, sh: Float) {
+/** Positive-modulo tile with 2px overlap — no mirror seams. */
+private fun DrawScope.drawSeamlessTiled(
+    img: ImageBitmap,
+    offX: Float,
+    offY: Float,
+    sw: Float,
+    sh: Float,
+    alpha: Float = 1f
+) {
+    val overlap = 2f
     val tw = sw
     val th = sh
-    val startCol = floor(-offX / tw).toInt() - 1
-    val endCol = ceil((sw - offX) / tw).toInt() + 1
-    val startRow = floor(-offY / th).toInt() - 1
-    val endRow = ceil((sh - offY) / th).toInt() + 1
-
-    for (col in startCol..endCol) {
-        for (row in startRow..endRow) {
-            val posX = offX + col * tw
-            val posY = offY + row * th
-            val flipX = if (col % 2 != 0) -1f else 1f
-            val flipY = if (row % 2 != 0) -1f else 1f
-
-            scale(scaleX = flipX, scaleY = flipY, pivot = Offset(posX + tw / 2f, posY + th / 2f)) {
-                drawImg(img, posX, posY, tw, th)
-            }
+    val ox = ((offX % tw) + tw) % tw
+    val oy = ((offY % th) + th) % th
+    var y = oy - th
+    while (y < sh + overlap) {
+        var x = ox - tw
+        while (x < sw + overlap) {
+            drawImg(img, x - overlap * 0.5f, y - overlap * 0.5f, tw + overlap, th + overlap, alpha)
+            x += tw
         }
+        y += th
     }
 }
 
-private fun DrawScope.drawImg(img: ImageBitmap, x: Float, y: Float, dw: Float, dh: Float) {
+private fun DrawScope.drawImg(
+    img: ImageBitmap,
+    x: Float,
+    y: Float,
+    dw: Float,
+    dh: Float,
+    alpha: Float = 1f
+) {
     drawImage(
         image = img,
         dstOffset = IntOffset(x.toInt(), y.toInt()),
-        dstSize = IntSize(dw.toInt(), dh.toInt()),
+        dstSize = IntSize(dw.toInt().coerceAtLeast(1), dh.toInt().coerceAtLeast(1)),
+        alpha = alpha,
         filterQuality = FilterQuality.Low
     )
 }
