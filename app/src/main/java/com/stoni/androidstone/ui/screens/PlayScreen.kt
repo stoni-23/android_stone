@@ -143,8 +143,15 @@ fun PlayScreen(onExit: () -> Unit) {
 
     // Seitenprofil Bell — tip up / mouth down in asset; rotate with shipAngle
     val shipHull = remember { loadStargameAsset(context, "player_glocke_side_alt_128.png") }
-    val thrust1 = remember { loadStargameAsset(context, "fx_steam_1.png") }
-    val thrust2 = remember { loadStargameAsset(context, "fx_steam_2.png") }
+    // Separate Looki thrust loop (prefer _64); NOT baked player_glocke_thrust_on_*
+    val thrustFrames = remember {
+        listOf(
+            loadStargameAsset(context, "fx_thrust_1_64.png"),
+            loadStargameAsset(context, "fx_thrust_2_64.png"),
+            loadStargameAsset(context, "fx_thrust_3_64.png"),
+            loadStargameAsset(context, "fx_thrust_4_64.png"),
+        )
+    }
     val enemyImg = remember { loadStargameAsset(context, "enemy_stoerer_64.png") }
     val enemyImgB = remember { loadStargameAsset(context, "enemy_stoerer_b_64.png") }
     val enemyBig = remember { loadStargameAsset(context, "enemy_stoerer_big_128.png") }
@@ -619,12 +626,16 @@ fun PlayScreen(onExit: () -> Unit) {
                 drawImg(d, shipPx - ds / 2f, shipPy - ds / 2f, ds, ds)
             } else if (iFrames == 0 || (tick / 3) % 2 == 0) {
                 rotate(degrees = shipAngle, pivot = Offset(shipPx, shipPy)) {
-                    // Thrust at mouth (bottom of tip-up sprite) while moving
+                    // Thrust behind hull: mouth = bottom-center; nozzle ~size/10 from top of fx
                     if (shipSpeed > 1.5f) {
-                        val flame = if ((tick / 3) % 2 == 0) thrust1 else thrust2
-                        val fw = shipPxSize * 0.55f
-                        val fh = shipPxSize * 0.75f
-                        drawImg(flame, shipPx - fw / 2f, shipPy + half * 0.25f, fw, fh)
+                        // ~12.5 fps at 50Hz tick (tick/4); loop 1→2→3→4
+                        val flame = thrustFrames[(tick / 4) % 4]
+                        val fw = shipPxSize * 0.42f
+                        val fh = shipPxSize * 0.55f
+                        val mouthY = shipPy + half  // bottom-center of ship bbox
+                        val nozzleFromTop = fh / 10f
+                        val thrustTop = mouthY - nozzleFromTop
+                        drawImg(flame, shipPx - fw / 2f, thrustTop, fw, fh)
                     }
                     drawImg(shipHull, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
                     if (muzzleFlash > 0) {
