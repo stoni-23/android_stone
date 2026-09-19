@@ -411,23 +411,18 @@ fun PlayScreen(onExit: () -> Unit) {
             shipPx = wrapCoord(shipPx, WORLD_W)
             shipPy = wrapCoord(shipPy, WORLD_H)
 
-            // Soft camera margins in wrapped space so follow never lerps through mid-map.
-            val marginX = sw * 0.22f
-            val marginY = sh * 0.22f
-            val dx = wrapDelta(shipPx - camX, WORLD_W)
-            val dy = wrapDelta(shipPy - camY, WORLD_H)
-            val adjDx = when {
-                dx < -marginX -> dx + marginX
-                dx > marginX -> dx - marginX
-                else -> 0f
-            }
-            val adjDy = when {
-                dy < -marginY -> dy + marginY
-                dy > marginY -> dy - marginY
-                else -> 0f
-            }
-            camX = wrapCoord(camX + adjDx * 0.18f, WORLD_W)
-            camY = wrapCoord(camY + adjDy * 0.18f, WORLD_H)
+            // Soft continuous camera (wrapDelta) — no dead-zone snap across torus wrap.
+            // Ship sits ~58% screen height (lower/centered); mild velocity look-ahead.
+            val shipScreenYFrac = 0.58f
+            val biasY = (shipScreenYFrac - 0.5f) * sh
+            val lookT = 9f
+            val targetCamX = shipPx + shipVx * lookT
+            val targetCamY = shipPy + shipVy * lookT - biasY
+            val cdx = wrapDelta(targetCamX - camX, WORLD_W)
+            val cdy = wrapDelta(targetCamY - camY, WORLD_H)
+            val follow = 0.13f
+            camX = wrapCoord(camX + cdx * follow, WORLD_W)
+            camY = wrapCoord(camY + cdy * follow, WORLD_H)
 
             bgOffsetX = -camX
             bgOffsetY = -camY
@@ -555,20 +550,41 @@ fun PlayScreen(onExit: () -> Unit) {
                 if (dist > 12f) {
                     val nx = edx / dist
                     val ny = edy / dist
+                    // Intercept lead (toroidal) — chase predicted player pos, not mid-map wander
+                    val leadT = when (e.type) {
+                        EnemyType.SCHNELL, EnemyType.JAEGER -> 14f
+                        EnemyType.SCOUT, EnemyType.LANG, EnemyType.SWARMER -> 10f
+                        else -> 6f
+                    }
+                    val pdx = wrapDx(shipPx + shipVx * leadT, e.x)
+                    val pdy = wrapDy(shipPy + shipVy * leadT, e.y)
+                    val pdist = hypot(pdx, pdy).coerceAtLeast(1f)
+                    val inx = pdx / pdist
+                    val iny = pdy / pdist
                     when (e.type) {
                         EnemyType.SCHNELL -> {
-                            val zig = sin(tick * 0.28f + e.x * 0.02f) * eSpeed * 1.35f
-                            e.x += nx * eSpeed + (-ny) * zig
-                            e.y += ny * eSpeed + nx * zig
+                            // Intercept chase + light weave (not aimless orbit)
+                            val weave = sin(tick * 0.22f + e.x * 0.015f) * eSpeed * 0.40f
+                            e.x += inx * eSpeed * 1.08f + (-iny) * weave
+                            e.y += iny * eSpeed * 1.08f + inx * weave
+                        }
+                        EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.LANG -> {
+                            e.x += inx * eSpeed
+                            e.y += iny * eSpeed
+                        }
+                        EnemyType.SWARMER -> {
+                            e.x += inx * eSpeed * 0.98f
+                            e.y += iny * eSpeed * 0.98f
                         }
                         EnemyType.DROHNE -> {
-                            val prefer = 170f
+                            // Pack orbit but close distance when far — less mid-map drift
+                            val prefer = 150f
                             val radial = when {
-                                dist > prefer + 50f -> eSpeed * 0.9f
-                                dist < prefer - 50f -> -eSpeed * 0.55f
-                                else -> eSpeed * 0.15f
+                                dist > prefer + 40f -> eSpeed * 1.05f
+                                dist < prefer - 40f -> -eSpeed * 0.45f
+                                else -> eSpeed * 0.22f
                             }
-                            val tang = eSpeed * 1.1f
+                            val tang = eSpeed * 0.72f
                             e.x += nx * radial + (-ny) * tang
                             e.y += ny * radial + nx * tang
                         }
@@ -581,6 +597,7 @@ fun PlayScreen(onExit: () -> Unit) {
                             e.y += ny * approach * (1f - crossBias) + nx * lateral * crossBias
                         }
                         else -> {
+                            // Tanks/boss/rocks: close distance straight toward player
                             e.x += nx * eSpeed
                             e.y += ny * eSpeed
                         }
@@ -1389,7 +1406,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
-            // Arena minimap — bottom-right, live player + nearby enemies
+            // Ortung minimap — bottom-right; blips recomputed each frame (ship-relative)
             if (!gameOver) {
                 ArenaMinimap(
                     modifier = Modifier
@@ -1400,7 +1417,8 @@ fun PlayScreen(onExit: () -> Unit) {
                     shipAngle = shipAngle,
                     enemies = enemies,
                     worldW = WORLD_W,
-                    worldH = WORLD_H
+                    worldH = WORLD_H,
+                    frame = tick
                 )
             }
 
@@ -1435,12 +1453,15 @@ private fun ArenaMinimap(
     shipAngle: Float,
     enemies: List<Enemy>,
     worldW: Float,
-    worldH: Float
+    worldH: Float,
+    frame: Int
 ) {
     val mapDp = 118.dp
+    // Force redraw every tick; blips from live enemy world positions (no stale cache).
+    val _frameGate = frame
     Column(modifier = modifier, horizontalAlignment = Alignment.End) {
         Text(
-            "Arena",
+            "Ortung",
             color = Color.White.copy(alpha = 0.50f),
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = FontFamily.SansSerif,
@@ -1457,6 +1478,8 @@ private fun ArenaMinimap(
                 .background(Color(0xE0050514))
         ) {
             Canvas(Modifier.fillMaxSize()) {
+                @Suppress("UNUSED_EXPRESSION")
+                _frameGate
                 val cx = size.width / 2f
                 val cy = size.height / 2f
                 val r = min(size.width, size.height) / 2f - 2f
@@ -1474,32 +1497,40 @@ private fun ArenaMinimap(
                     style = Stroke(width = 1.2f)
                 )
                 val mapR = r - 8f
-                fun toMx(wx: Float) = cx + ((wx / worldW) - 0.5f) * 2f * mapR * (worldW / max(worldW, worldH))
-                fun toMy(wy: Float) = cy + ((wy / worldH) - 0.5f) * 2f * mapR * (worldH / max(worldW, worldH))
+                // Radar range around ship; blips = toroidal relative positions each frame
+                val radarRange = max(worldW, worldH) * 0.20f
                 drawCircle(
                     color = Color(0x184FC3F7),
                     radius = mapR,
                     center = Offset(cx, cy),
                     style = Stroke(width = 1.5f)
                 )
+                // Range rings
+                drawCircle(
+                    color = Color(0x104FC3F7),
+                    radius = mapR * 0.5f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1f)
+                )
                 enemies.forEach { e ->
-                    val ex = toMx(e.x)
-                    val ey = toMy(e.y)
+                    val rdx = wrapDelta(e.x - shipX, worldW)
+                    val rdy = wrapDelta(e.y - shipY, worldH)
+                    val ex = cx + (rdx / radarRange) * mapR
+                    val ey = cy + (rdy / radarRange) * mapR
                     val ddx = ex - cx
                     val ddy = ey - cy
                     if (ddx * ddx + ddy * ddy > mapR * mapR) return@forEach
                     val col = when {
                         e.type.isBossLike() -> Color(0xFFE040FB)
-                        else -> Color(0xFFFF8A65)
+                        else -> Color(0xFFFF5252)
                     }
                     drawCircle(
-                        col.copy(alpha = 0.9f),
-                        radius = if (e.type.isBossLike()) 3.4f else 2.1f,
+                        col.copy(alpha = 0.95f),
+                        radius = if (e.type.isBossLike()) 3.4f else 2.2f,
                         center = Offset(ex, ey)
                     )
                 }
-                val px = toMx(shipX)
-                val py = toMy(shipY)
+                // Player triangle at center = live heading
                 val tip = 7.5f
                 val base = 5.2f
                 val rad = (shipAngle - 90f) * (PI / 180.0)
@@ -1509,9 +1540,9 @@ private fun ArenaMinimap(
                 val ly = fx
                 val path = Path().apply {
                     fillType = PathFillType.EvenOdd
-                    moveTo(px + fx * tip, py + fy * tip)
-                    lineTo(px - fx * tip * 0.55f + lx * base, py - fy * tip * 0.55f + ly * base)
-                    lineTo(px - fx * tip * 0.55f - lx * base, py - fy * tip * 0.55f - ly * base)
+                    moveTo(cx + fx * tip, cy + fy * tip)
+                    lineTo(cx - fx * tip * 0.55f + lx * base, cy - fy * tip * 0.55f + ly * base)
+                    lineTo(cx - fx * tip * 0.55f - lx * base, cy - fy * tip * 0.55f - ly * base)
                     close()
                 }
                 drawPath(path, Color(0xFF00E5FF).copy(alpha = 0.35f))
