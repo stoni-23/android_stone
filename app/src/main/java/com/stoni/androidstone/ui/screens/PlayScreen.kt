@@ -228,9 +228,18 @@ fun PlayScreen(onExit: () -> Unit) {
     val bomberLicht = remember { loadStargameAssetOrNull(context, "enemy_bomber_licht_64.png") }
     val bomberImg80 = remember { loadStargameAssetOrNull(context, "enemy_bomber_80.png") }
     val heartImg = remember { loadStargameAsset(context, "ui_heart.png") }
-    val puWeapon = remember { loadStargameAsset(context, "icon_mode_weapon_64.png") }
-    val puHeal = remember { loadStargameAsset(context, "icon_mode_heal_64.png") }
+    // Artiflux Items v1 — world pickups (64). P2 laser/missile/bomb/overdrive PNGs in assets only (no gameplay yet).
+    val puEnergy = remember { loadStargameAsset(context, "powerup_energy_64.png") }
+    val puRapid = remember { loadStargameAsset(context, "powerup_rapid_64.png") }
+    val puMagnet = remember { loadStargameAsset(context, "powerup_magnet_64.png") }
+    val puSpread = remember { loadStargameAsset(context, "powerup_spread_64.png") }
+    val puShield = remember { loadStargameAsset(context, "powerup_shield_64.png") }
     val puSpeed = remember { loadStargameAsset(context, "powerup_speed_64.png") }
+    // HUD chips: icon_hud_32 where available; shield/speed keep 64
+    val hudEnergy = remember { loadStargameAsset(context, "powerup_energy_icon_hud_32.png") }
+    val hudRapid = remember { loadStargameAsset(context, "powerup_rapid_icon_hud_32.png") }
+    val hudMagnet = remember { loadStargameAsset(context, "powerup_magnet_icon_hud_32.png") }
+    val hudSpread = remember { loadStargameAsset(context, "powerup_spread_icon_hud_32.png") }
     val boom1 = remember { loadStargameAsset(context, "fx_explosion_1.png") }
     val boom2 = remember { loadStargameAsset(context, "fx_explosion_2.png") }
     val boom3 = remember { loadStargameAsset(context, "fx_explosion_3.png") }
@@ -269,6 +278,7 @@ fun PlayScreen(onExit: () -> Unit) {
     var speedBoost by remember { mutableIntStateOf(0) }
     var rapidFire by remember { mutableIntStateOf(0) }
     var scoreMagnet by remember { mutableIntStateOf(0) }
+    var energyFlash by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
 
     var bgOffsetX by remember { mutableFloatStateOf(0f) }
@@ -449,6 +459,7 @@ fun PlayScreen(onExit: () -> Unit) {
             if (speedBoost > 0) speedBoost--
             if (rapidFire > 0) rapidFire--
             if (scoreMagnet > 0) scoreMagnet--
+            if (energyFlash > 0) energyFlash--
 
             val enemiesPerWave = 16 + wave * 6
             if (awaitingBoss && enemies.isEmpty() && bullets.none { !it.fromPlayer }) {
@@ -729,6 +740,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     when (p.type) {
                         PowerUpKind.ENERGY -> {
                             energy = (energy + 42f).coerceAtMost(100f)
+                            energyFlash = 90
                             banner = "Energie +!"
                         }
                         PowerUpKind.RAPID_FIRE -> {
@@ -1017,20 +1029,26 @@ fun PlayScreen(onExit: () -> Unit) {
             powerups.forEach { p ->
                 val px = toSx(p.x)
                 val py = toSy(p.y)
-                // Remap to existing icons only (no new PNG names); Kacki can swap later
+                // Artiflux Items v1 remap (P1 energy/spread + optional rapid/magnet; shield/speed kept)
                 val ring = when (p.type) {
-                    PowerUpKind.SPREAD, PowerUpKind.RAPID_FIRE -> Color(0xFFFF5252)
-                    PowerUpKind.SHIELD, PowerUpKind.ENERGY -> Color(0xFF69F0AE)
-                    else -> Color(0xFF00E5FF)
+                    PowerUpKind.ENERGY -> Color(0xFFB2EBF2)
+                    PowerUpKind.RAPID_FIRE -> Color(0xFFFF9100)
+                    PowerUpKind.SPREAD -> Color(0xFFFF5252)
+                    PowerUpKind.SHIELD -> Color(0xFF69F0AE)
+                    PowerUpKind.SCORE_MAGNET -> Color(0xFFFFD740)
+                    PowerUpKind.SPEED_BOOST -> Color(0xFF00E5FF)
                 }
                 drawCircle(ring.copy(alpha = 0.22f), 38f, Offset(px, py))
                 drawCircle(color = ring.copy(alpha = 0.85f), radius = 32f, center = Offset(px, py), style = Stroke(width = 4f))
                 val img = when (p.type) {
-                    PowerUpKind.SPREAD, PowerUpKind.RAPID_FIRE -> puWeapon
-                    PowerUpKind.SHIELD, PowerUpKind.ENERGY -> puHeal
-                    else -> puSpeed
+                    PowerUpKind.ENERGY -> puEnergy
+                    PowerUpKind.RAPID_FIRE -> puRapid
+                    PowerUpKind.SPREAD -> puSpread
+                    PowerUpKind.SHIELD -> puShield
+                    PowerUpKind.SCORE_MAGNET -> puMagnet
+                    PowerUpKind.SPEED_BOOST -> puSpeed
                 }
-                val icon = if (p.type == PowerUpKind.SPEED_BOOST || p.type == PowerUpKind.SCORE_MAGNET) 48f else 38f
+                val icon = 48f
                 drawImg(img, px - icon / 2f, py - icon / 2f, icon, icon)
             }
 
@@ -1231,10 +1249,19 @@ fun PlayScreen(onExit: () -> Unit) {
                         HudModeChip(puSpeed, Color(0xFF00E5FF), "Tempo", speedBoost, 420)
                     }
                     if (shield > 0) {
-                        HudModeChip(puHeal, Color(0xFF69F0AE), "Schild", shield, 420)
+                        HudModeChip(puShield, Color(0xFF69F0AE), "Schild", shield, 420)
                     }
                     if (multishot > 0) {
-                        HudModeChip(puWeapon, Color(0xFFFF5252), "Waffe", multishot, 420)
+                        HudModeChip(hudSpread, Color(0xFFFF5252), "Waffe", multishot, 420)
+                    }
+                    if (rapidFire > 0) {
+                        HudModeChip(hudRapid, Color(0xFFFF9100), "Schnell", rapidFire, 480)
+                    }
+                    if (scoreMagnet > 0) {
+                        HudModeChip(hudMagnet, Color(0xFFFFD740), "Magnet", scoreMagnet, 480)
+                    }
+                    if (energyFlash > 0) {
+                        HudModeChip(hudEnergy, Color(0xFFB2EBF2), "Energie", energyFlash, 90)
                     }
                 }
             }

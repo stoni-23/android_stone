@@ -10,8 +10,9 @@ data class SpawnPick(
 
 /**
  * Power-up kinds for drop rolls.
- * ENERGY + RAPID_FIRE are weighted highest; draw assets can be wired later by Kacki
- * (no new PNG names invented here — PlayScreen may remap to existing icons).
+ * ENERGY + RAPID_FIRE are weighted highest.
+ * Draw: PlayScreen wires Artiflux P1 (energy/spread) + optional rapid/magnet;
+ * P2 laser/missile/bomb/overdrive assets staged only (no gameplay yet).
  */
 enum class PowerUpKind {
     ENERGY,
