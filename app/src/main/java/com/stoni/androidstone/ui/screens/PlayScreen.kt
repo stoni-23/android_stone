@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import com.stoni.androidstone.R
 import com.stoni.androidstone.game.loadStargameAsset
+import com.stoni.androidstone.game.loadStargameAssetOrNull
 import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
@@ -51,7 +52,21 @@ private enum class EnemyType(
     SWARMER(14f, 4.5f, 1, Color(0xFF00FF9D), 10),
     SCOUT(22f, 3.0f, 3, Color(0xFFFF5252), 25),
     TANK(38f, 1.4f, 10, Color(0xFFFF9100), 75),
-    BOSS(65f, 0.9f, 60, Color(0xFFE040FB), 500)
+    BOSS(65f, 0.9f, 60, Color(0xFFE040FB), 500),
+    KOMET(22f, 3.2f, 2, Color(0xFFFFAB40), 20),
+    KOMET_BIG(65f, 0.75f, 18, Color(0xFFFF6D00), 400),
+    ASTEROID(24f, 2.2f, 3, Color(0xFFBCAAA4), 15),
+    FELS(40f, 1.1f, 12, Color(0xFF8D6E63), 80),
+    JAEGER(22f, 3.4f, 3, Color(0xFF40C4FF), 30),
+    MINE(18f, 1.6f, 1, Color(0xFFFF1744), 35)
+}
+
+private fun EnemyType.isBossLike(): Boolean =
+    this == EnemyType.BOSS || this == EnemyType.KOMET_BIG
+
+private fun EnemyType.canShoot(): Boolean = when (this) {
+    EnemyType.SCOUT, EnemyType.TANK, EnemyType.BOSS, EnemyType.JAEGER -> true
+    else -> false
 }
 
 private data class Bullet(
@@ -134,6 +149,18 @@ fun PlayScreen(onExit: () -> Unit) {
     val starFar = remember { loadStargameAsset(context, "bg_stars_far.png") }
     val starMid = remember { loadStargameAsset(context, "bg_stars_mid.png") }
     val starNear = remember { loadStargameAsset(context, "bg_stars_near.png") }
+    val bgNebula = remember { loadStargameAssetOrNull(context, "bg_nebula.png") }
+    val bgDebris = remember { loadStargameAssetOrNull(context, "bg_debris.png") }
+    val kometImg = remember { loadStargameAssetOrNull(context, "enemy_komet_64.png") }
+    val kometLicht = remember { loadStargameAssetOrNull(context, "enemy_komet_licht_64.png") }
+    val kometBigImg = remember { loadStargameAssetOrNull(context, "enemy_komet_big_128.png") }
+    val asteroidImg = remember { loadStargameAssetOrNull(context, "enemy_asteroid_64.png") }
+    val asteroidImgB = remember { loadStargameAssetOrNull(context, "enemy_asteroid_b_64.png") }
+    val felsImg = remember { loadStargameAssetOrNull(context, "enemy_asteroid_big_128.png") }
+    val jaegerImg = remember { loadStargameAssetOrNull(context, "enemy_jaeger_64.png") }
+    val jaegerLicht = remember { loadStargameAssetOrNull(context, "enemy_jaeger_licht_64.png") }
+    val mineImg = remember { loadStargameAssetOrNull(context, "enemy_mine_64.png") }
+    val mineLicht = remember { loadStargameAssetOrNull(context, "enemy_mine_licht_64.png") }
     val heartImg = remember { loadStargameAsset(context, "ui_heart.png") }
     val puWeapon = remember { loadStargameAsset(context, "icon_mode_weapon_64.png") }
     val puHeal = remember { loadStargameAsset(context, "icon_mode_heal_64.png") }
@@ -213,9 +240,10 @@ fun PlayScreen(onExit: () -> Unit) {
 
     fun enemyHitRadius(type: EnemyType): Float = when (type) {
         EnemyType.SWARMER -> type.baseRadius * 1.2f
-        EnemyType.SCOUT -> enemyPxSize * 0.45f
-        EnemyType.TANK -> tankPxSize * 0.45f
-        EnemyType.BOSS -> bossPxSize * 0.45f
+        EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.KOMET, EnemyType.ASTEROID, EnemyType.MINE ->
+            enemyPxSize * 0.45f
+        EnemyType.TANK, EnemyType.FELS -> tankPxSize * 0.45f
+        EnemyType.BOSS, EnemyType.KOMET_BIG -> bossPxSize * 0.45f
     }
 
     fun clampWorld(x: Float, y: Float, pad: Float = 40f): Pair<Float, Float> =
@@ -349,11 +377,17 @@ fun PlayScreen(onExit: () -> Unit) {
                     shipPy + sin(spawnAngle) * spawnDist,
                     80f
                 )
+                val bossType = if (wave >= 6 && Random.nextBoolean()) EnemyType.KOMET_BIG else EnemyType.BOSS
                 enemies += Enemy(
                     x = bx, y = by,
-                    hp = bossHp, maxHp = bossHp,
-                    fireCd = 40, type = EnemyType.BOSS
+                    hp = if (bossType == EnemyType.KOMET_BIG) EnemyType.KOMET_BIG.maxHp + wave * 2 else bossHp,
+                    maxHp = if (bossType == EnemyType.KOMET_BIG) EnemyType.KOMET_BIG.maxHp + wave * 2 else bossHp,
+                    fireCd = 40, type = bossType
                 )
+                if (bossType == EnemyType.KOMET_BIG) {
+                    bossHpMax = enemies.last().maxHp.toFloat()
+                    bossHpCurrent = enemies.last().hp.toFloat()
+                }
             } else if (!isBossActive && !awaitingBoss) {
                 if (spawnCd > 0) spawnCd-- else if (spawned < enemiesPerWave) {
                     spawnCd = max(18, 60 - wave * 4)
@@ -366,8 +400,13 @@ fun PlayScreen(onExit: () -> Unit) {
                     )
 
                     val type = when {
-                        wave >= 2 && Random.nextFloat() < 0.20f -> EnemyType.TANK
-                        wave >= 2 && Random.nextFloat() < 0.35f -> EnemyType.SWARMER
+                        Random.nextFloat() < 0.25f -> EnemyType.ASTEROID
+                        Random.nextFloat() < 0.15f -> EnemyType.KOMET
+                        wave >= 3 && Random.nextFloat() < 0.18f ->
+                            if (Random.nextBoolean()) EnemyType.MINE else EnemyType.FELS
+                        wave >= 2 && Random.nextFloat() < 0.18f -> EnemyType.TANK
+                        wave >= 2 && Random.nextFloat() < 0.30f -> EnemyType.SWARMER
+                        wave >= 2 && Random.nextFloat() < 0.40f -> EnemyType.JAEGER
                         else -> EnemyType.SCOUT
                     }
 
@@ -392,12 +431,20 @@ fun PlayScreen(onExit: () -> Unit) {
                 }
             }
 
+            val minesToBoom = mutableListOf<Enemy>()
             enemies.forEach { e ->
                 val edx = shipPx - e.x
                 val edy = shipPy - e.y
                 val dist = hypot(edx, edy)
 
-                e.angle = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
+                when (e.type) {
+                    EnemyType.KOMET -> e.angle += 1.2f
+                    EnemyType.KOMET_BIG -> e.angle += 0.6f
+                    EnemyType.ASTEROID -> e.angle += 2.5f
+                    EnemyType.FELS -> e.angle += 0.7f
+                    EnemyType.MINE -> e.angle += 1.0f
+                    else -> e.angle = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
+                }
 
                 val eSpeed = e.type.speed + wave * 0.08f
                 if (dist > 12f) {
@@ -408,10 +455,14 @@ fun PlayScreen(onExit: () -> Unit) {
                 e.x = clamped.first
                 e.y = clamped.second
 
-                if (e.type != EnemyType.SWARMER) {
+                if (e.type == EnemyType.MINE && dist < 70f) {
+                    minesToBoom += e
+                }
+
+                if (e.type.canShoot()) {
                     if (e.fireCd > 0) e.fireCd-- else {
                         e.fireCd = when (e.type) {
-                            EnemyType.SCOUT -> 90 - wave * 3
+                            EnemyType.SCOUT, EnemyType.JAEGER -> 90 - wave * 3
                             EnemyType.TANK -> 70 - wave * 2
                             EnemyType.BOSS -> 35
                             else -> 100
@@ -423,21 +474,30 @@ fun PlayScreen(onExit: () -> Unit) {
                                 EnemyType.TANK -> 10f + wave * 0.3f
                                 else -> 11.5f + wave * 0.4f
                             }
+                            val faceAng = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
                             val ebvx = (edx / dist) * ebSpeed
                             val ebvy = (edy / dist) * ebSpeed
 
                             if (e.type == EnemyType.BOSS || e.type == EnemyType.TANK) {
-                                val sp1 = (e.angle - 90f - 18f) * PI / 180.0
-                                val sp2 = (e.angle - 90f + 18f) * PI / 180.0
-                                bullets += Bullet(e.x, e.y, ebvx, ebvy, e.angle, false)
-                                bullets += Bullet(e.x, e.y, (cos(sp1) * ebSpeed).toFloat(), (sin(sp1) * ebSpeed).toFloat(), e.angle - 18f, false)
-                                bullets += Bullet(e.x, e.y, (cos(sp2) * ebSpeed).toFloat(), (sin(sp2) * ebSpeed).toFloat(), e.angle + 18f, false)
+                                val sp1 = (faceAng - 90f - 18f) * PI / 180.0
+                                val sp2 = (faceAng - 90f + 18f) * PI / 180.0
+                                bullets += Bullet(e.x, e.y, ebvx, ebvy, faceAng, false)
+                                bullets += Bullet(e.x, e.y, (cos(sp1) * ebSpeed).toFloat(), (sin(sp1) * ebSpeed).toFloat(), faceAng - 18f, false)
+                                bullets += Bullet(e.x, e.y, (cos(sp2) * ebSpeed).toFloat(), (sin(sp2) * ebSpeed).toFloat(), faceAng + 18f, false)
                             } else {
-                                bullets += Bullet(e.x, e.y, ebvx, ebvy, e.angle, false)
+                                // SCOUT / JAEGER: single shot aimed at player
+                                bullets += Bullet(e.x, e.y, ebvx, ebvy, faceAng, false)
                             }
                         }
                     }
                 }
+            }
+            for (m in minesToBoom) {
+                fx += Fx(m.x, m.y, 14, 1)
+                fx += Fx(m.x, m.y, 18, 2)
+                enemies.remove(m)
+                hurtPlayer()
+                sfx.hit()
             }
 
             bullets.forEach { it.x += it.vx; it.y += it.vy }
@@ -459,7 +519,7 @@ fun PlayScreen(onExit: () -> Unit) {
                         hitBullets += b
                         e.hp--
                         fx += Fx(e.x, e.y, 8, 0)
-                        if (e.type == EnemyType.BOSS) {
+                        if (e.type.isBossLike()) {
                             bossHpCurrent = e.hp.toFloat().coerceAtLeast(0f)
                         }
                         if (e.hp <= 0) {
@@ -468,7 +528,7 @@ fun PlayScreen(onExit: () -> Unit) {
                             fx += Fx(e.x, e.y, 18, 2)
                             score += e.type.scoreValue * wave
                             sfx.hit()
-                            if (e.type == EnemyType.BOSS) {
+                            if (e.type.isBossLike()) {
                                 isBossActive = false
                                 wave++
                                 spawned = 0
@@ -502,7 +562,7 @@ fun PlayScreen(onExit: () -> Unit) {
                 val r = enemyHitRadius(e.type)
                 if (hypot(e.x - shipPx, e.y - shipPy) < (r + shipPxSize * 0.30f)) {
                     fx += Fx(e.x, e.y, 14, 1)
-                    if (e.type != EnemyType.BOSS) {
+                    if (!e.type.isBossLike()) {
                         enemies.remove(e)
                     }
                     hurtPlayer()
@@ -565,8 +625,10 @@ fun PlayScreen(onExit: () -> Unit) {
             val toSy = { wy: Float -> wy - camY + size.height / 2f }
 
             drawMirroredTiled(starFar, bgOffsetX * 0.25f, bgOffsetY * 0.25f, w, h)
+            bgNebula?.let { drawMirroredTiled(it, bgOffsetX * 0.35f, bgOffsetY * 0.35f, w, h) }
             drawMirroredTiled(starMid, bgOffsetX * 0.50f, bgOffsetY * 0.50f, w, h)
             drawMirroredTiled(starNear, bgOffsetX * 0.90f, bgOffsetY * 0.90f, w, h)
+            bgDebris?.let { drawMirroredTiled(it, bgOffsetX * 0.95f, bgOffsetY * 0.95f, w, h) }
 
             val half = shipPxSize / 2f
 
@@ -610,12 +672,50 @@ fun PlayScreen(onExit: () -> Unit) {
                             )
                             drawCircle(Color.White.copy(alpha = 0.4f), bossPxSize * 0.12f, Offset(sx, sy))
                         }
+                        EnemyType.KOMET -> {
+                            val blink = (tick / 12 + i) % 2 == 0
+                            val img = if (blink) kometImg else (kometLicht ?: kometImg)
+                            drawSpriteOrOval(img, sx, sy, enemyPxSize, e.type.color)
+                        }
+                        EnemyType.KOMET_BIG -> {
+                            drawSpriteOrOval(kometBigImg, sx, sy, bossPxSize, e.type.color)
+                            drawCircle(
+                                e.type.color.copy(alpha = 0.45f),
+                                bossPxSize * 0.48f,
+                                Offset(sx, sy),
+                                style = Stroke(width = 4f)
+                            )
+                        }
+                        EnemyType.ASTEROID -> {
+                            val blink = (tick / 12 + i) % 2 == 0
+                            val img = if (blink) asteroidImg else (asteroidImgB ?: asteroidImg)
+                            drawSpriteOrOval(img, sx, sy, enemyPxSize, e.type.color)
+                        }
+                        EnemyType.FELS -> {
+                            drawSpriteOrOval(felsImg, sx, sy, tankPxSize, e.type.color)
+                            drawCircle(
+                                e.type.color.copy(alpha = 0.30f),
+                                tankPxSize * 0.42f,
+                                Offset(sx, sy),
+                                style = Stroke(width = 3f)
+                            )
+                        }
+                        EnemyType.JAEGER -> {
+                            val blink = (tick / 12 + i) % 2 == 0
+                            val img = if (blink) jaegerImg else (jaegerLicht ?: jaegerImg)
+                            drawSpriteOrOval(img, sx, sy, enemyPxSize, e.type.color)
+                        }
+                        EnemyType.MINE -> {
+                            val blink = (tick / 12 + i) % 2 == 0
+                            val img = if (blink) mineImg else (mineLicht ?: mineImg)
+                            drawSpriteOrOval(img, sx, sy, enemyPxSize * 0.9f, e.type.color)
+                        }
                     }
                 }
                 if (e.type != EnemyType.SWARMER && e.hp < e.maxHp) {
                     val barW = when (e.type) {
-                        EnemyType.BOSS -> bossPxSize
-                        EnemyType.TANK -> tankPxSize
+                        EnemyType.BOSS, EnemyType.KOMET_BIG -> bossPxSize
+                        EnemyType.TANK, EnemyType.FELS -> tankPxSize
                         else -> enemyPxSize
                     }
                     val top = sy - barW * 0.55f - 10f
@@ -738,6 +838,21 @@ fun PlayScreen(onExit: () -> Unit) {
                 Text("Nochmal / Menü", color = Color.White, fontSize = 16.sp)
             }
         }
+    }
+}
+
+
+private fun DrawScope.drawSpriteOrOval(img: ImageBitmap?, cx: Float, cy: Float, size: Float, fallback: Color) {
+    if (img != null) {
+        drawImg(img, cx - size / 2f, cy - size / 2f, size, size)
+    } else {
+        drawOval(fallback, topLeft = Offset(cx - size / 2f, cy - size / 2f), size = Size(size, size))
+        drawOval(
+            Color.White.copy(alpha = 0.25f),
+            topLeft = Offset(cx - size / 2f, cy - size / 2f),
+            size = Size(size, size),
+            style = Stroke(width = 2f)
+        )
     }
 }
 
