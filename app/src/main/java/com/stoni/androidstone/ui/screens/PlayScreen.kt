@@ -66,11 +66,22 @@ import com.stoni.androidstone.game.PowerUpKind
 import com.stoni.androidstone.game.bomberDropVelocity
 import com.stoni.androidstone.game.bomberFireCooldown
 import com.stoni.androidstone.game.canShoot
+import com.stoni.androidstone.game.enemiesPerWave
+import com.stoni.androidstone.game.facingToward
+import com.stoni.androidstone.game.formationOffsets
 import com.stoni.androidstone.game.isBossLike
 import com.stoni.androidstone.game.loadStargameAsset
 import com.stoni.androidstone.game.loadStargameAssetOrNull
+import com.stoni.androidstone.game.pickEdgeSpawnOrigin
 import com.stoni.androidstone.game.pickEnemySpawn
+import com.stoni.androidstone.game.pickFormation
 import com.stoni.androidstone.game.rollPowerUpDrop
+import com.stoni.androidstone.game.rotateOffsets
+import com.stoni.androidstone.game.spawnCooldownTicks
+import com.stoni.androidstone.game.waveStartCooldown
+import com.stoni.androidstone.game.wrapCoord
+import com.stoni.androidstone.game.wrapDelta
+import com.stoni.androidstone.game.wrapWorld
 import kotlinx.coroutines.delay
 import kotlin.math.*
 import kotlin.random.Random
@@ -78,15 +89,6 @@ import kotlin.random.Random
 /** Large portrait arena with toroidal wrap (no walls). Size divisible by 2×500 star tiles. */
 private const val WORLD_W = 10000f
 private const val WORLD_H = 14000f
-
-private fun wrapCoord(v: Float, size: Float): Float = ((v % size) + size) % size
-
-/** Shortest signed delta on a toroidal axis. */
-private fun wrapDelta(d: Float, size: Float): Float {
-    var v = ((d % size) + size) % size
-    if (v > size * 0.5f) v -= size
-    return v
-}
 
 private data class Bullet(
     var x: Float,
@@ -345,8 +347,10 @@ fun PlayScreen(onExit: () -> Unit) {
         EnemyType.BOSS, EnemyType.KOMET_BIG -> bossPxSize * 0.45f
     }
 
-    fun wrapWorld(x: Float, y: Float): Pair<Float, Float> =
-        wrapCoord(x, WORLD_W) to wrapCoord(y, WORLD_H)
+    fun wrapWorldPair(x: Float, y: Float): Pair<Float, Float> {
+        val p = wrapWorld(x, y, WORLD_W, WORLD_H)
+        return p.x to p.y
+    }
 
     fun wrapDx(ax: Float, bx: Float): Float = wrapDelta(ax - bx, WORLD_W)
     fun wrapDy(ay: Float, by: Float): Float = wrapDelta(ay - by, WORLD_H)
@@ -471,7 +475,7 @@ fun PlayScreen(onExit: () -> Unit) {
             if (laserMode > 0) laserMode--
             if (missileMode > 0) missileMode--
 
-            val enemiesPerWave = 16 + wave * 6
+            val waveQuota = enemiesPerWave(wave)
             if (awaitingBoss && enemies.isEmpty() && bullets.none { !it.fromPlayer }) {
                 awaitingBoss = false
                 isBossActive = true
@@ -479,12 +483,9 @@ fun PlayScreen(onExit: () -> Unit) {
                 bossHpMax = bossHp.toFloat()
                 bossHpCurrent = bossHp.toFloat()
                 banner = "⚠ SECTOR BOSS ⚠"
-                val spawnAngle = Random.nextFloat() * 2f * PI.toFloat()
-                val spawnDist = max(sw, sh) * 0.85f + 120f
-                val (bx, by) = wrapWorld(
-                    shipPx + cos(spawnAngle) * spawnDist,
-                    shipPy + sin(spawnAngle) * spawnDist,
-                )
+                val edge = pickEdgeSpawnOrigin(camX, camY, sw, sh, WORLD_W, WORLD_H, margin = 180f)
+                val bx = edge.x
+                val by = edge.y
                 val bossType = if (wave >= 6 && Random.nextBoolean()) EnemyType.KOMET_BIG else EnemyType.BOSS
                 enemies += Enemy(
                     x = bx, y = by,
@@ -497,23 +498,22 @@ fun PlayScreen(onExit: () -> Unit) {
                     bossHpCurrent = enemies.last().hp.toFloat()
                 }
             } else if (!isBossActive && !awaitingBoss) {
-                if (spawnCd > 0) spawnCd-- else if (spawned < enemiesPerWave) {
-                    spawnCd = max(16, 58 - wave * 3)
-                    val spawnAngle = Random.nextFloat() * 2f * PI.toFloat()
-                    val spawnDist = max(sw, sh) * 0.75f + 80f
-                    val (ex, ey) = wrapWorld(
-                        shipPx + cos(spawnAngle) * spawnDist,
-                        shipPy + sin(spawnAngle) * spawnDist,
-                    )
+                if (spawnCd > 0) spawnCd-- else if (spawned < waveQuota) {
+                    spawnCd = spawnCooldownTicks(wave)
+                    val edge = pickEdgeSpawnOrigin(camX, camY, sw, sh, WORLD_W, WORLD_H)
+                    val ex = edge.x
+                    val ey = edge.y
 
                     val pick = pickEnemySpawn(wave)
                     val type = pick.type
                     val pack = pick.packSize
-                    repeat(pack) { j ->
-                        if (spawned >= enemiesPerWave) return@repeat
-                        val ox = if (j == 0) 0f else (Random.nextFloat() - 0.5f) * 90f
-                        val oy = if (j == 0) 0f else (Random.nextFloat() - 0.5f) * 90f
-                        val (px, py) = wrapWorld(ex + ox, ey + oy)
+                    val formation = pickFormation(type, pack)
+                    val facing = facingToward(ex, ey, shipPx, shipPy, WORLD_W, WORLD_H)
+                    val offsets = rotateOffsets(formationOffsets(formation, pack), facing)
+                    for (j in offsets.indices) {
+                        if (spawned >= waveQuota) break
+                        val o = offsets[j]
+                        val (px, py) = wrapWorldPair(ex + o.dx, ey + o.dy)
                         enemies += Enemy(
                             x = px, y = py,
                             hp = type.maxHp + (wave - 1) / 2,
@@ -530,7 +530,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     } else {
                         wave++
                         spawned = 0
-                        spawnCd = 70
+                        spawnCd = waveStartCooldown(wave)
                         banner = "Welle $wave!"
                     }
                 }
@@ -586,7 +586,7 @@ fun PlayScreen(onExit: () -> Unit) {
                         }
                     }
                 }
-                val wrapped = wrapWorld(e.x, e.y)
+                val wrapped = wrapWorldPair(e.x, e.y)
                 e.x = wrapped.first
                 e.y = wrapped.second
 
@@ -646,13 +646,13 @@ fun PlayScreen(onExit: () -> Unit) {
             bullets.forEach { it.x += it.vx; it.y += it.vy }
             powerups.forEach {
                 it.y += 0.35f
-                val wp = wrapWorld(it.x, it.y)
+                val wp = wrapWorldPair(it.x, it.y)
                 it.x = wp.first
                 it.y = wp.second
             }
             fx.forEach {
                 it.life--
-                val wf = wrapWorld(it.x, it.y)
+                val wf = wrapWorldPair(it.x, it.y)
                 it.x = wf.first
                 it.y = wf.second
             }
@@ -687,7 +687,7 @@ fun PlayScreen(onExit: () -> Unit) {
                                 isBossActive = false
                                 wave++
                                 spawned = 0
-                                spawnCd = 80
+                                spawnCd = waveStartCooldown(wave)
                                 banner = "Boss vernichtet! Welle $wave"
                                 if (score > high) {
                                     high = score
@@ -733,7 +733,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     val md = hypot(mdx, mdy)
                     if (md > 1f && md < 420f) {
                         val pull = 4.5f
-                        val (nxp, nyp) = wrapWorld(p.x + (mdx / md) * pull, p.y + (mdy / md) * pull)
+                        val (nxp, nyp) = wrapWorldPair(p.x + (mdx / md) * pull, p.y + (mdy / md) * pull)
                         p.x = nxp
                         p.y = nyp
                     }
@@ -1269,7 +1269,7 @@ fun PlayScreen(onExit: () -> Unit) {
             }
 
             // Top-right: score / wave progress + mode chips (modes only in UI)
-            val enemiesPerWaveHud = 16 + wave * 6
+            val enemiesPerWaveHud = enemiesPerWave(wave)
             val waveAlive = enemies.count { !it.type.isBossLike() }
             val waveRemaining = if (isBossActive || awaitingBoss) {
                 0
