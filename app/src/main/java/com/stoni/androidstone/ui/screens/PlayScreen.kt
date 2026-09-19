@@ -261,8 +261,6 @@ fun PlayScreen(onExit: () -> Unit) {
     val boom1 = remember { loadStargameAsset(context, "fx_explosion_1.png") }
     val boom2 = remember { loadStargameAsset(context, "fx_explosion_2.png") }
     val boom3 = remember { loadStargameAsset(context, "fx_explosion_3.png") }
-    val muzzle1 = remember { loadStargameAsset(context, "fx_muzzle_1.png") }
-    val muzzle2 = remember { loadStargameAsset(context, "fx_muzzle_2.png") }
     val death1 = remember { loadStargameAsset(context, "fx_player_death_1.png") }
     val death2 = remember { loadStargameAsset(context, "fx_player_death_2.png") }
     val death3 = remember { loadStargameAsset(context, "fx_player_death_3.png") }
@@ -278,7 +276,10 @@ fun PlayScreen(onExit: () -> Unit) {
     var shipAngle by remember { mutableFloatStateOf(0f) }
     var fingerX by remember { mutableFloatStateOf(540f) }
     var fingerY by remember { mutableFloatStateOf(700f) }
+    var stickOriginX by remember { mutableFloatStateOf(0f) }
+    var stickOriginY by remember { mutableFloatStateOf(0f) }
     var isTouching by remember { mutableStateOf(false) }
+    val stickMaxRadius = 100f
     var camX by remember { mutableFloatStateOf(WORLD_W * 0.5f) }
     var camY by remember { mutableFloatStateOf(WORLD_H * 0.5f) }
 
@@ -297,7 +298,6 @@ fun PlayScreen(onExit: () -> Unit) {
     var bgOffsetX by remember { mutableFloatStateOf(0f) }
     var bgOffsetY by remember { mutableFloatStateOf(0f) }
 
-    var muzzleFlash by remember { mutableIntStateOf(0) }
     var iFrames by remember { mutableIntStateOf(0) }
     var deathFrame by remember { mutableIntStateOf(0) }
 
@@ -318,12 +318,12 @@ fun PlayScreen(onExit: () -> Unit) {
         if (iFrames > 0) return
         if (shield > 0) {
             shield = 0
-            energy = (energy - 20f).coerceAtLeast(15f)
+            energy = (energy - 10f).coerceAtLeast(15f)
             iFrames = 50
             return
         }
         lives--
-        energy = (energy - 35f).coerceAtLeast(0f)
+        energy = (energy - 18f).coerceAtLeast(0f)
         iFrames = 75
         if (lives <= 0) {
             gameOver = true
@@ -354,13 +354,6 @@ fun PlayScreen(onExit: () -> Unit) {
     fun wrapDist(ax: Float, ay: Float, bx: Float, by: Float): Float =
         hypot(wrapDx(ax, bx), wrapDy(ay, by))
 
-    LaunchedEffect(w, h) {
-        if (w > 10f && h > 10f && fingerX == 540f && fingerY == 700f) {
-            fingerX = w / 2f
-            fingerY = h / 2f - 100f
-        }
-    }
-
     LaunchedEffect(paused, gameOver) {
         while (!paused && !gameOver) {
             delay(20)
@@ -369,26 +362,27 @@ fun PlayScreen(onExit: () -> Unit) {
             val sh = h.coerceAtLeast(1f)
 
             if (iFrames > 0) iFrames--
-            if (muzzleFlash > 0) muzzleFlash--
-            if (energy < 100f) energy = (energy + 0.22f).coerceAtMost(100f)
+            // Soft energy: regen manageable; firing never drains energy
+            if (energy < 100f) energy = (energy + 0.50f).coerceAtMost(100f)
 
+            // Floating virtual stick: thrust from origin→finger (clamped), not chase-ship
             if (isTouching) {
-                val shipSx = shipPx - camX + sw / 2f
-                val shipSy = shipPy - camY + sh / 2f
-                val dx = fingerX - shipSx
-                val dy = fingerY - shipSy
+                val dx = fingerX - stickOriginX
+                val dy = fingerY - stickOriginY
                 val dist = hypot(dx, dy)
-
-                if (dist > 15f) {
-                    val targetAngle = (atan2(dy, dx) * 180.0 / PI).toFloat() + 90f
+                if (dist > 8f) {
+                    val nx = dx / dist
+                    val ny = dy / dist
+                    val strength = (dist.coerceAtMost(stickMaxRadius) / stickMaxRadius)
+                    val targetAngle = (atan2(ny, nx) * 180.0 / PI).toFloat() + 90f
                     var diff = (targetAngle - shipAngle) % 360f
                     if (diff > 180f) diff -= 360f
                     if (diff < -180f) diff += 360f
-                    shipAngle += diff * 0.22f
+                    shipAngle += diff * 0.28f
 
-                    val chaseSpeed = if (speedBoost > 0) 1.3f else 0.95f
-                    shipVx += (dx / dist) * chaseSpeed
-                    shipVy += (dy / dist) * chaseSpeed
+                    val thrust = (if (speedBoost > 0) 1.35f else 1.0f) * strength
+                    shipVx += nx * thrust
+                    shipVy += ny * thrust
                 }
             }
 
@@ -443,7 +437,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     fireCd--
                 } else {
                     fireCd = if (multishot > 0) 8 else 13
-                    muzzleFlash = 3
+                    // No muzzle flash on hull — modes live only in HUD chips
                     sfx.shoot()
                     val bSpeed = if (speedBoost > 0) 24f else 20f
                     val shootRad = (shipAngle - 90f) * PI / 180.0
@@ -778,6 +772,8 @@ fun PlayScreen(onExit: () -> Unit) {
                 detectDragGestures(
                     onDragStart = { offset ->
                         isTouching = true
+                        stickOriginX = offset.x
+                        stickOriginY = offset.y
                         fingerX = offset.x
                         fingerY = offset.y
                     },
@@ -1063,21 +1059,53 @@ fun PlayScreen(onExit: () -> Unit) {
                         val ty = shipSy + half - th * 0.12f
                         drawImg(tf, shipSx - tw / 2f, ty, tw, th)
                     }
-                    // Always single hull — never swap to triple (blue mode baked in sprite)
+                    // Always single hull — never swap to triple; no mode icons on ship Canvas
                     drawImg(shipSingle, shipSx - half, shipSy - half, shipPxSize, shipPxSize)
-
-                    if (muzzleFlash > 0) {
-                        val m = if (muzzleFlash > 2) muzzle1 else muzzle2
-                        // Small nose flash only — not a large mode icon on the hull
-                        val flash = 26f
-                        val mouthY = shipSy - half - flash * 0.50f
-                        drawImg(m, shipSx - flash / 2f, mouthY, flash, flash)
-                    }
                 }
             }
 
             if (shield > 0) {
                 drawCircle(Color(0x554FC3F7), shipPxSize * 0.6f, Offset(shipSx, shipSy))
+            }
+
+            // Ephemeral floating stick — only while touching; disappears on release
+            if (isTouching && !gameOver) {
+                val ox = stickOriginX
+                val oy = stickOriginY
+                val rawDx = fingerX - ox
+                val rawDy = fingerY - oy
+                val rawDist = hypot(rawDx, rawDy)
+                val knobDx: Float
+                val knobDy: Float
+                if (rawDist > stickMaxRadius && rawDist > 0.001f) {
+                    knobDx = rawDx / rawDist * stickMaxRadius
+                    knobDy = rawDy / rawDist * stickMaxRadius
+                } else {
+                    knobDx = rawDx
+                    knobDy = rawDy
+                }
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.18f),
+                    radius = stickMaxRadius,
+                    center = Offset(ox, oy),
+                    style = Stroke(width = 3f)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.08f),
+                    radius = stickMaxRadius,
+                    center = Offset(ox, oy)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.35f),
+                    radius = 22f,
+                    center = Offset(ox + knobDx, oy + knobDy)
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.55f),
+                    radius = 22f,
+                    center = Offset(ox + knobDx, oy + knobDy),
+                    style = Stroke(width = 2f)
+                )
             }
             // HUD (hearts/bars/score/pause/banner) is Compose overlay with window insets
         }
@@ -1146,7 +1174,21 @@ fun PlayScreen(onExit: () -> Unit) {
                 }
             }
 
-            // Top-right: score / wave + mode chips
+            // Top-right: score / wave progress + mode chips (modes only in UI)
+            val enemiesPerWaveHud = 16 + wave * 6
+            val waveAlive = enemies.count { !it.type.isBossLike() }
+            val waveRemaining = if (isBossActive || awaitingBoss) {
+                0
+            } else {
+                (enemiesPerWaveHud - spawned).coerceAtLeast(0) + waveAlive
+            }
+            val waveDone = (enemiesPerWaveHud - waveRemaining).coerceIn(0, enemiesPerWaveHud)
+            val wavePct = if (enemiesPerWaveHud > 0) (waveDone * 100) / enemiesPerWaveHud else 0
+            val waveLine = when {
+                isBossActive -> "Welle $wave · Boss"
+                awaitingBoss -> "Welle $wave · Boss…"
+                else -> "Welle $wave · $wavePct%  ($waveDone/$enemiesPerWaveHud)"
+            }
             Column(
                 modifier = Modifier.align(Alignment.TopEnd),
                 horizontalAlignment = Alignment.End,
@@ -1158,7 +1200,7 @@ fun PlayScreen(onExit: () -> Unit) {
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        "Score $score  ·  Hi $high\nWelle $wave",
+                        "Score $score  ·  Hi $high\n$waveLine",
                         color = Color.White,
                         textAlign = TextAlign.End,
                         style = MaterialTheme.typography.titleMedium.copy(
@@ -1170,10 +1212,16 @@ fun PlayScreen(onExit: () -> Unit) {
                         )
                     )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (speedBoost > 0) HudModeChip(puSpeed, Color(0xFF00E5FF))
-                    if (shield > 0) HudModeChip(puHeal, Color(0xFF69F0AE))
-                    if (multishot > 0) HudModeChip(puWeapon, Color(0xFFFF5252))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (speedBoost > 0) {
+                        HudModeChip(puSpeed, Color(0xFF00E5FF), "Tempo", speedBoost, 420)
+                    }
+                    if (shield > 0) {
+                        HudModeChip(puHeal, Color(0xFF69F0AE), "Schild", shield, 420)
+                    }
+                    if (multishot > 0) {
+                        HudModeChip(puWeapon, Color(0xFFFF5252), "Waffe", multishot, 420)
+                    }
                 }
             }
 
@@ -1286,19 +1334,47 @@ private fun HudStatBar(
 }
 
 @Composable
-private fun HudModeChip(img: ImageBitmap, ring: Color) {
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .background(ring.copy(alpha = 0.18f), RoundedCornerShape(20.dp))
-            .padding(4.dp),
-        contentAlignment = Alignment.Center
+private fun HudModeChip(
+    img: ImageBitmap,
+    ring: Color,
+    label: String,
+    remaining: Int,
+    maxTicks: Int
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        Image(
-            bitmap = img,
-            contentDescription = null,
-            modifier = Modifier.size(30.dp),
-            contentScale = ContentScale.Fit
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .background(ring.copy(alpha = 0.22f), RoundedCornerShape(28.dp))
+                .padding(5.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                bitmap = img,
+                contentDescription = label,
+                modifier = Modifier.size(42.dp),
+                contentScale = ContentScale.Fit
+            )
+        }
+        Text(
+            label,
+            color = Color.White,
+            style = MaterialTheme.typography.labelMedium.copy(
+                fontFamily = FontFamily.SansSerif,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                shadow = Shadow(Color.Black, Offset(1f, 1f), 4f)
+            )
+        )
+        HudStatBar(
+            fraction = (remaining.toFloat() / maxTicks.toFloat()).coerceIn(0f, 1f),
+            track = Color(0xFF1A1A28),
+            fill = ring,
+            heightDp = 5.dp,
+            widthDp = 56.dp
         )
     }
 }
