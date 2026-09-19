@@ -81,6 +81,11 @@ import com.stoni.androidstone.game.spawnCooldownTicks
 import com.stoni.androidstone.game.waveStartCooldown
 import com.stoni.androidstone.game.wrapCoord
 import com.stoni.androidstone.game.wrapDelta
+import com.stoni.androidstone.game.PursuitStyle
+import com.stoni.androidstone.game.aimFacingDeg
+import com.stoni.androidstone.game.enemySteer
+import com.stoni.androidstone.game.pursuitStyle
+import com.stoni.androidstone.game.spawnDriftVelocity
 import com.stoni.androidstone.game.wrapWorld
 import kotlinx.coroutines.delay
 import kotlin.math.*
@@ -107,7 +112,10 @@ private data class Enemy(
     val maxHp: Int,
     var fireCd: Int = 60,
     val type: EnemyType,
-    var angle: Float = 0f
+    var angle: Float = 0f,
+    /** Entry / drift velocity (DRIFT types keep this; hunters recompute each tick). */
+    var vx: Float = 0f,
+    var vy: Float = 0f,
 )
 
 private data class PowerUp(var x: Float, var y: Float, val type: PowerUpKind)
@@ -482,11 +490,14 @@ fun PlayScreen(onExit: () -> Unit) {
                 val bx = edge.x
                 val by = edge.y
                 val bossType = if (wave >= 6 && Random.nextBoolean()) EnemyType.KOMET_BIG else EnemyType.BOSS
+                val bossFacing = facingToward(bx, by, shipPx, shipPy, WORLD_W, WORLD_H)
+                val (bdvx, bdvy) = spawnDriftVelocity(bossFacing, bossType.speed + wave * 0.08f)
                 enemies += Enemy(
                     x = bx, y = by,
                     hp = if (bossType == EnemyType.KOMET_BIG) EnemyType.KOMET_BIG.maxHp + wave * 4 + 8 else bossHp,
                     maxHp = if (bossType == EnemyType.KOMET_BIG) EnemyType.KOMET_BIG.maxHp + wave * 4 + 8 else bossHp,
-                    fireCd = 40, type = bossType
+                    fireCd = 40, type = bossType,
+                    vx = bdvx, vy = bdvy,
                 )
                 if (bossType == EnemyType.KOMET_BIG) {
                     bossHpMax = enemies.last().maxHp.toFloat()
@@ -509,12 +520,14 @@ fun PlayScreen(onExit: () -> Unit) {
                         if (spawned >= waveQuota) break
                         val o = offsets[j]
                         val (px, py) = wrapWorldPair(ex + o.dx, ey + o.dy)
+                        val (dvx, dvy) = spawnDriftVelocity(facing, type.speed + wave * 0.08f)
                         enemies += Enemy(
                             x = px, y = py,
                             hp = type.maxHp + (wave - 1) / 2,
                             maxHp = type.maxHp + (wave - 1) / 2,
                             fireCd = 45 + Random.nextInt(35),
-                            type = type
+                            type = type,
+                            vx = dvx, vy = dvy,
                         )
                         spawned++
                     }
@@ -533,9 +546,29 @@ fun PlayScreen(onExit: () -> Unit) {
 
             val minesToBoom = mutableListOf<Enemy>()
             enemies.forEach { e ->
+                // Toroidal vector to current ship (collision / mine proximity)
                 val edx = wrapDx(shipPx, e.x)
                 val edy = wrapDy(shipPy, e.y)
                 val dist = hypot(edx, edy)
+
+                val eSpeed = e.type.speed + wave * 0.08f
+                val steer = enemySteer(
+                    type = e.type,
+                    ex = e.x, ey = e.y,
+                    shipX = shipPx, shipY = shipPy,
+                    shipVx = shipVx, shipVy = shipVy,
+                    worldW = WORLD_W, worldH = WORLD_H,
+                    eSpeed = eSpeed,
+                    tick = tick,
+                    driftVx = e.vx, driftVy = e.vy,
+                )
+                e.x += steer.dx
+                e.y += steer.dy
+                // Hunters cache last steer; drift types keep spawn vx/vy unchanged
+                if (e.type.pursuitStyle() != PursuitStyle.DRIFT) {
+                    e.vx = steer.dx
+                    e.vy = steer.dy
+                }
 
                 when (e.type) {
                     EnemyType.KOMET -> e.angle += 1.2f
@@ -543,66 +576,9 @@ fun PlayScreen(onExit: () -> Unit) {
                     EnemyType.ASTEROID -> e.angle += 2.5f
                     EnemyType.FELS -> e.angle += 0.7f
                     EnemyType.MINE, EnemyType.DROHNE -> e.angle += 1.0f
-                    else -> e.angle = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
+                    else -> e.angle = aimFacingDeg(steer.aimDx, steer.aimDy)
                 }
 
-                val eSpeed = e.type.speed + wave * 0.08f
-                if (dist > 12f) {
-                    val nx = edx / dist
-                    val ny = edy / dist
-                    // Intercept lead (toroidal) — chase predicted player pos, not mid-map wander
-                    val leadT = when (e.type) {
-                        EnemyType.SCHNELL, EnemyType.JAEGER -> 14f
-                        EnemyType.SCOUT, EnemyType.LANG, EnemyType.SWARMER -> 10f
-                        else -> 6f
-                    }
-                    val pdx = wrapDx(shipPx + shipVx * leadT, e.x)
-                    val pdy = wrapDy(shipPy + shipVy * leadT, e.y)
-                    val pdist = hypot(pdx, pdy).coerceAtLeast(1f)
-                    val inx = pdx / pdist
-                    val iny = pdy / pdist
-                    when (e.type) {
-                        EnemyType.SCHNELL -> {
-                            // Intercept chase + light weave (not aimless orbit)
-                            val weave = sin(tick * 0.22f + e.x * 0.015f) * eSpeed * 0.40f
-                            e.x += inx * eSpeed * 1.08f + (-iny) * weave
-                            e.y += iny * eSpeed * 1.08f + inx * weave
-                        }
-                        EnemyType.SCOUT, EnemyType.JAEGER, EnemyType.LANG -> {
-                            e.x += inx * eSpeed
-                            e.y += iny * eSpeed
-                        }
-                        EnemyType.SWARMER -> {
-                            e.x += inx * eSpeed * 0.98f
-                            e.y += iny * eSpeed * 0.98f
-                        }
-                        EnemyType.DROHNE -> {
-                            // Pack orbit but close distance when far — less mid-map drift
-                            val prefer = 150f
-                            val radial = when {
-                                dist > prefer + 40f -> eSpeed * 1.05f
-                                dist < prefer - 40f -> -eSpeed * 0.45f
-                                else -> eSpeed * 0.22f
-                            }
-                            val tang = eSpeed * 0.72f
-                            e.x += nx * radial + (-ny) * tang
-                            e.y += ny * radial + nx * tang
-                        }
-                        EnemyType.BOMBER -> {
-                            // Sideways/cross or slow frontal — not aggressive chase
-                            val crossBias = 0.55f + 0.35f * sin(tick * 0.04f + e.x * 0.01f)
-                            val approach = eSpeed * 0.22f
-                            val lateral = eSpeed * 1.05f
-                            e.x += nx * approach * (1f - crossBias) + (-ny) * lateral * crossBias
-                            e.y += ny * approach * (1f - crossBias) + nx * lateral * crossBias
-                        }
-                        else -> {
-                            // Tanks/boss/rocks: close distance straight toward player
-                            e.x += nx * eSpeed
-                            e.y += ny * eSpeed
-                        }
-                    }
-                }
                 val wrapped = wrapWorldPair(e.x, e.y)
                 e.x = wrapped.first
                 e.y = wrapped.second
@@ -622,15 +598,21 @@ fun PlayScreen(onExit: () -> Unit) {
                             else -> 100
                         }.coerceAtLeast(20)
 
-                        if (dist > 15f) {
+                        // Shooters lead with the same intercept aim (toroidal)
+                        val (shotDx, shotDy) = when (e.type) {
+                            EnemyType.BOMBER -> edx to edy
+                            else -> steer.aimDx to steer.aimDy
+                        }
+                        val shotDist = hypot(shotDx, shotDy)
+                        if (shotDist > 15f) {
                             val ebSpeed = when (e.type) {
                                 EnemyType.BOSS -> 14f + wave * 0.4f
                                 EnemyType.TANK, EnemyType.PANZER -> 10f + wave * 0.3f
                                 else -> 11.5f + wave * 0.4f
                             }
-                            val faceAng = (atan2(edy, edx) * 180.0 / PI).toFloat() + 90f
-                            val ebvx = (edx / dist) * ebSpeed
-                            val ebvy = (edy / dist) * ebSpeed
+                            val faceAng = aimFacingDeg(shotDx, shotDy)
+                            val ebvx = (shotDx / shotDist) * ebSpeed
+                            val ebvy = (shotDy / shotDist) * ebSpeed
 
                             when (e.type) {
                                 EnemyType.BOMBER -> {
@@ -652,6 +634,7 @@ fun PlayScreen(onExit: () -> Unit) {
                     }
                 }
             }
+
             for (m in minesToBoom) {
                 fx += Fx(m.x, m.y, 14, 1)
                 fx += Fx(m.x, m.y, 18, 2)
