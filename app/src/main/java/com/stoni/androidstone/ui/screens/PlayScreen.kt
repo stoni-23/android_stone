@@ -228,13 +228,18 @@ fun PlayScreen(onExit: () -> Unit) {
     val bomberLicht = remember { loadStargameAssetOrNull(context, "enemy_bomber_licht_64.png") }
     val bomberImg80 = remember { loadStargameAssetOrNull(context, "enemy_bomber_80.png") }
     val heartImg = remember { loadStargameAsset(context, "ui_heart.png") }
-    // Artiflux Items v1 — world pickups (64). P2 laser/missile/bomb/overdrive PNGs in assets only (no gameplay yet).
+    // Artiflux Items v1 — world pickups (64). P1 + P2 wired (collect stubs; Kacki finals Draw/HUD).
     val puEnergy = remember { loadStargameAsset(context, "powerup_energy_64.png") }
     val puRapid = remember { loadStargameAsset(context, "powerup_rapid_64.png") }
     val puMagnet = remember { loadStargameAsset(context, "powerup_magnet_64.png") }
     val puSpread = remember { loadStargameAsset(context, "powerup_spread_64.png") }
     val puShield = remember { loadStargameAsset(context, "powerup_shield_64.png") }
     val puSpeed = remember { loadStargameAsset(context, "powerup_speed_64.png") }
+    // P2 Artiflux Items v1 (Kacki finals Draw later; loads for compile + minimal icons)
+    val puLaser = remember { loadStargameAsset(context, "powerup_weapon_laser_64.png") }
+    val puMissile = remember { loadStargameAsset(context, "powerup_weapon_missile_64.png") }
+    val puBomb = remember { loadStargameAsset(context, "powerup_bomb_64.png") }
+    val puOverdrive = remember { loadStargameAsset(context, "powerup_overdrive_64.png") }
     // HUD chips: icon_hud_32 where available; shield/speed keep 64
     val hudEnergy = remember { loadStargameAsset(context, "powerup_energy_icon_hud_32.png") }
     val hudRapid = remember { loadStargameAsset(context, "powerup_rapid_icon_hud_32.png") }
@@ -279,6 +284,9 @@ fun PlayScreen(onExit: () -> Unit) {
     var rapidFire by remember { mutableIntStateOf(0) }
     var scoreMagnet by remember { mutableIntStateOf(0) }
     var energyFlash by remember { mutableIntStateOf(0) }
+    // Artiflux P2 stubs: laser=pierce mode, missile=homing mode (flags; draw/fire polish = Kacki)
+    var laserMode by remember { mutableIntStateOf(0) }
+    var missileMode by remember { mutableIntStateOf(0) }
     var tick by remember { mutableIntStateOf(0) }
 
     var bgOffsetX by remember { mutableFloatStateOf(0f) }
@@ -460,6 +468,8 @@ fun PlayScreen(onExit: () -> Unit) {
             if (rapidFire > 0) rapidFire--
             if (scoreMagnet > 0) scoreMagnet--
             if (energyFlash > 0) energyFlash--
+            if (laserMode > 0) laserMode--
+            if (missileMode > 0) missileMode--
 
             val enemiesPerWave = 16 + wave * 6
             if (awaitingBoss && enemies.isEmpty() && bullets.none { !it.fromPlayer }) {
@@ -763,6 +773,37 @@ fun PlayScreen(onExit: () -> Unit) {
                             speedBoost = 420
                             banner = "Hyper-Schub!"
                         }
+                        PowerUpKind.WEAPON_LASER -> {
+                            // Stub: Pierce/Laser-Mode Flag; reuse spread-ähnlich bis echtes Beam-Feuer
+                            laserMode = 480
+                            multishot = max(multishot, 360)
+                            banner = "Laser-Mode!"
+                        }
+                        PowerUpKind.WEAPON_MISSILE -> {
+                            // Stub: Homing-Mode Flag (Feuer-Logik folgt)
+                            missileMode = 480
+                            banner = "Raketen-Mode!"
+                        }
+                        PowerUpKind.BOMB -> {
+                            // Einmalig: nahe Gegner clearen (kein Boss)
+                            val radius = 420f
+                            val doomed = enemies.filter {
+                                !it.type.isBossLike() && wrapDist(it.x, it.y, shipPx, shipPy) < radius
+                            }
+                            for (e in doomed) {
+                                fx += Fx(e.x, e.y, 14, 1)
+                                fx += Fx(e.x, e.y, 18, 2)
+                                score += e.type.scoreValue * wave
+                                enemies.remove(e)
+                            }
+                            sfx.hit()
+                            banner = if (doomed.isEmpty()) "Bombe (leer)!" else "Bombe! ×${doomed.size}"
+                        }
+                        PowerUpKind.OVERDRIVE -> {
+                            // Temporärer Fire-Rate Boost wie RAPID_FIRE
+                            rapidFire = max(rapidFire, 520)
+                            banner = "Overdrive!"
+                        }
                     }
                 }
             }
@@ -1037,6 +1078,10 @@ fun PlayScreen(onExit: () -> Unit) {
                     PowerUpKind.SHIELD -> Color(0xFF69F0AE)
                     PowerUpKind.SCORE_MAGNET -> Color(0xFFFFD740)
                     PowerUpKind.SPEED_BOOST -> Color(0xFF00E5FF)
+                    PowerUpKind.WEAPON_LASER -> Color(0xFFE040FB)
+                    PowerUpKind.WEAPON_MISSILE -> Color(0xFFFF6E40)
+                    PowerUpKind.BOMB -> Color(0xFFFFEE58)
+                    PowerUpKind.OVERDRIVE -> Color(0xFFFFD740)
                 }
                 drawCircle(ring.copy(alpha = 0.22f), 38f, Offset(px, py))
                 drawCircle(color = ring.copy(alpha = 0.85f), radius = 32f, center = Offset(px, py), style = Stroke(width = 4f))
@@ -1047,6 +1092,10 @@ fun PlayScreen(onExit: () -> Unit) {
                     PowerUpKind.SHIELD -> puShield
                     PowerUpKind.SCORE_MAGNET -> puMagnet
                     PowerUpKind.SPEED_BOOST -> puSpeed
+                    PowerUpKind.WEAPON_LASER -> puLaser
+                    PowerUpKind.WEAPON_MISSILE -> puMissile
+                    PowerUpKind.BOMB -> puBomb
+                    PowerUpKind.OVERDRIVE -> puOverdrive
                 }
                 val icon = 48f
                 drawImg(img, px - icon / 2f, py - icon / 2f, icon, icon)

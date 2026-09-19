@@ -9,10 +9,10 @@ data class SpawnPick(
 )
 
 /**
- * Power-up kinds for drop rolls.
- * ENERGY + RAPID_FIRE are weighted highest.
- * Draw: PlayScreen wires Artiflux P1 (energy/spread) + optional rapid/magnet;
- * P2 laser/missile/bomb/overdrive assets staged only (no gameplay yet).
+ * Power-up kinds for drop rolls (Artiflux Items v1).
+ * P1: ENERGY (heal) highest; SPREAD highest among weapons.
+ * P2 rarer: WEAPON_LASER, WEAPON_MISSILE, BOMB, OVERDRIVE.
+ * Optional low: RAPID_FIRE, SCORE_MAGNET. SHIELD/SPEED_BOOST moderate.
  */
 enum class PowerUpKind {
     ENERGY,
@@ -20,7 +20,11 @@ enum class PowerUpKind {
     SPREAD,
     SHIELD,
     SCORE_MAGNET,
-    SPEED_BOOST
+    SPEED_BOOST,
+    WEAPON_LASER,
+    WEAPON_MISSILE,
+    BOMB,
+    OVERDRIVE,
 }
 
 private fun <T> weightedPick(weights: List<Pair<T, Int>>, rng: Random): T {
@@ -101,19 +105,28 @@ fun pickEnemySpawn(wave: Int, rng: Random = Random): SpawnPick {
 }
 
 /**
- * Roll a power-up drop on enemy death.
- * @return null if nothing drops; otherwise a [PowerUpKind] (Energy/Rapid prioritized).
+ * Roll a power-up drop on enemy death (Artiflux Items v1 weights).
+ * Energy klar häufiger als jede einzelne Waffe; Spread zweithöchste Waffen-Gewichtung.
+ * @return null if nothing drops; otherwise a [PowerUpKind].
  */
 fun rollPowerUpDrop(wave: Int, rng: Random = Random): PowerUpKind? {
     val chance = (0.28f + wave * 0.012f).coerceAtMost(0.38f)
     if (rng.nextFloat() >= chance) return null
     val weights = listOf(
-        PowerUpKind.ENERGY to 28,
-        PowerUpKind.RAPID_FIRE to 24,
-        PowerUpKind.SPREAD to 14,
+        // P1
+        PowerUpKind.ENERGY to 34,
+        PowerUpKind.SPREAD to 16,
+        // moderate
         PowerUpKind.SHIELD to 12,
-        PowerUpKind.SPEED_BOOST to 12,
-        PowerUpKind.SCORE_MAGNET to 10,
+        PowerUpKind.SPEED_BOOST to 11,
+        // optional niedrig
+        PowerUpKind.RAPID_FIRE to 8,
+        PowerUpKind.SCORE_MAGNET to 6,
+        // P2 seltener
+        PowerUpKind.WEAPON_LASER to 5,
+        PowerUpKind.WEAPON_MISSILE to 5,
+        PowerUpKind.OVERDRIVE to 5,
+        PowerUpKind.BOMB to 4,
     )
     return weightedPick(weights, rng)
 }
