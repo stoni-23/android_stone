@@ -20,7 +20,7 @@ fun AppNavHost() {
             StartScreen(onStart = { nav.navigate(Routes.PLAY) { popUpTo(Routes.START) { inclusive = true } } })
         }
         composable(Routes.PLAY) {
-            PlayScreen(onExit = {
+            PlayScreen(onBackToMenu = {
                 nav.navigate(Routes.START) {
                     popUpTo(Routes.PLAY) { inclusive = true }
                 }
