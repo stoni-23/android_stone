@@ -1,9 +1,12 @@
 package com.stoni.androidstone.ui.screens
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +25,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
@@ -29,21 +33,15 @@ import androidx.compose.ui.unit.sp
 import com.stoni.androidstone.game.loadStargameAsset
 import kotlinx.coroutines.delay
 
-/**
- * Klugscheißer lines (Daniel exact on beat 1) — kept for nobubble+overlay fallback only.
- * Current build uses intro_panel_1..6 WITH baked-in bubbles; do not draw these on screen.
- */
-@Suppress("unused")
-private val introBeatsFallback = listOf(
-    "Holen Sie die Karte, Pimpelhuber — die Karte des Sieges.",
-    "Zu Befehl, Herr Major!",
-    "Du fliegst in die Reichszeitglocke. Allein.",
-    "In… die Glocke, Herr Major?",
-    "Rein. Luke zu. Und bring den Orbit zur Ruhe.",
-    "Luke zu. Start."
+/** Daniel + Klugscheißer locked intro beats — exact copy. */
+private val introCaptions = listOf(
+    "Major: „Pimpelhuber — ab in die Glocke und holen Sie die Karte des Sieges.“",
+    "Pimpelhuber: „Aber Herr Major…“",
+    "Major: „Ab in die Glocke und holen Sie die Karte des Sieges.“",
+    "Luke/Glocke: „Luke zu.“"
 )
 
-private const val INTRO_PANEL_COUNT = 6
+private const val INTRO_STEP_COUNT = 4
 
 @Composable
 fun StartScreen(onStart: () -> Unit) {
@@ -68,7 +66,7 @@ fun StartScreen(onStart: () -> Unit) {
             loadStargameAsset(context, "menu_logo_4.png")
         )
     }
-    // Panels WITH baked-in bubbles (prefer over nobubble + Compose text)
+    // Scene art (Looki); captions are Compose bottom bars with locked copy
     val introPanels = remember {
         listOf(
             loadStargameAsset(context, "intro_panel_1.png"),
@@ -90,7 +88,7 @@ fun StartScreen(onStart: () -> Unit) {
     }
 
     val inMenu = phase == 0
-    val lastIntro = introStep >= INTRO_PANEL_COUNT - 1
+    val lastIntro = introStep >= INTRO_STEP_COUNT - 1
 
     Box(
         modifier = Modifier
@@ -99,7 +97,7 @@ fun StartScreen(onStart: () -> Unit) {
                 if (inMenu) {
                     phase = 1
                     introStep = 0
-                } else if (introStep < INTRO_PANEL_COUNT - 1) {
+                } else if (introStep < INTRO_STEP_COUNT - 1) {
                     introStep++
                 } else {
                     onStart()
@@ -125,30 +123,67 @@ fun StartScreen(onStart: () -> Unit) {
             }
         }
 
-        // Menu cue only — intro uses baked-in bubbles (no Compose dialogue overlay)
         if (inMenu) {
             Text(
-                "► TIPPEN ZUM INTRO",
+                "REICHSZEITGLOCKE",
+                color = Color(0xFFF2E6D0),
+                fontSize = 22.sp,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 2.sp,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(bottom = 72.dp)
+            )
+            Text(
+                "► START GAME",
                 color = Color(0xFFC9A66B),
-                fontSize = 14.sp,
+                fontSize = 16.sp,
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 1.sp,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 48.dp)
+                    .padding(bottom = 56.dp)
             )
-        } else {
             Text(
-                if (lastIntro) "► TIPPEN ZUM START" else "Tippen …",
-                color = if (lastIntro) Color(0xFFC9A66B) else Color(0xFF8A8680),
-                fontSize = 12.sp,
+                "TOUCH-FLY  ·  AUTO-FIRE",
+                color = Color(0xFF8A8680),
+                fontSize = 10.sp,
                 fontFamily = FontFamily.Monospace,
-                fontWeight = if (lastIntro) FontWeight.Bold else FontWeight.Normal,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = 20.dp)
+                    .padding(bottom = 28.dp)
             )
+        } else {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .background(Color(0xCC050510))
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                Text(
+                    introCaptions[introStep.coerceIn(0, introCaptions.lastIndex)],
+                    color = Color(0xFFF2E6D0),
+                    fontSize = 13.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    if (lastIntro) "► TIPPEN ZUM START" else "Tippen …",
+                    color = if (lastIntro) Color(0xFFC9A66B) else Color(0xFF8A8680),
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = if (lastIntro) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                )
+            }
         }
     }
 }
