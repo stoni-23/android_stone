@@ -1,0 +1,21 @@
+Neue Assets (PlayScreen noch nicht verdrahtet):
+
+Umgebung
+  bg_nebula.png     360x640  Nebel-Parallax (cyan/violett)
+  bg_debris.png     360x640  Geröll/Staub-Parallax
+
+Kometen
+  enemy_komet_64.png / enemy_komet_licht_64.png
+  enemy_komet_128.png / enemy_komet_licht_128.png
+  enemy_komet_big_128.png
+
+Asteroiden
+  enemy_asteroid_64.png / enemy_asteroid_b_64.png
+  enemy_asteroid_80.png
+  enemy_asteroid_big_128.png
+
+Neue Feinde
+  enemy_jaeger_64.png / enemy_jaeger_licht_64.png
+  enemy_jaeger_80.png
+  enemy_mine_64.png / enemy_mine_licht_64.png
+  enemy_mine_80.png
