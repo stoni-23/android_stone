@@ -1054,25 +1054,15 @@ fun PlayScreen(onExit: () -> Unit) {
                     val thrusting = isTouching || hypot(shipVx, shipVy) > 1.2f
                     if (thrusting) {
                         val tf = thrustFrames[((tick / 5) % thrustFrames.size).coerceAtLeast(0)]
-                        // Crop top ~40% cyan nozzle/body — keep orange/yellow flame only
-                        val srcTop = (tf.height * 0.40f).toInt().coerceIn(1, (tf.height - 4).coerceAtLeast(1))
-                        val srcH = (tf.height - srcTop).coerceAtLeast(1)
+                        // Flame-only assets (transparent top, no cyan nozzle) — draw full frame
                         val tw = shipPxSize * 0.78f
                         val th = shipPxSize * 0.55f
-                        // Tip-up hull: mouth at bottom; flame starts at mouth, slight overlap under hull
+                        // Tip-up hull: mouth at bottom; flame at mouth, slight overlap under hull
                         val mouthY = shipSy + half
                         val ty = mouthY - th * 0.10f
-                        drawImgSrc(
-                            tf,
-                            srcOffset = IntOffset(0, srcTop),
-                            srcSize = IntSize(tf.width, srcH),
-                            x = shipSx - tw / 2f,
-                            y = ty,
-                            dw = tw,
-                            dh = th
-                        )
+                        drawImg(tf, shipSx - tw / 2f, ty, tw, th)
                     }
-                    // Always draw hull AFTER thrust so hull covers any leftover nozzle
+                    // Always draw hull AFTER thrust so flame sits under mouth
                     drawImg(shipSingle, shipSx - half, shipSy - half, shipPxSize, shipPxSize)
                 }
             }
@@ -1460,24 +1450,3 @@ private fun DrawScope.drawImg(
     )
 }
 
-/** Draw with source crop (e.g. skip cyan nozzle rows on thrust frames). */
-private fun DrawScope.drawImgSrc(
-    img: ImageBitmap,
-    srcOffset: IntOffset,
-    srcSize: IntSize,
-    x: Float,
-    y: Float,
-    dw: Float,
-    dh: Float,
-    alpha: Float = 1f
-) {
-    drawImage(
-        image = img,
-        srcOffset = srcOffset,
-        srcSize = srcSize,
-        dstOffset = IntOffset(x.toInt(), y.toInt()),
-        dstSize = IntSize(dw.toInt().coerceAtLeast(1), dh.toInt().coerceAtLeast(1)),
-        alpha = alpha,
-        filterQuality = FilterQuality.Low
-    )
-}
