@@ -141,8 +141,8 @@ fun PlayScreen(onExit: () -> Unit) {
         onDispose { sfx.release() }
     }
 
-    // Seitenprofil Bell — tip up / mouth down in asset; rotate with shipAngle
-    val shipHull = remember { loadStargameAsset(context, "player_glocke_side_alt_128.png") }
+    // Good tip-up/mouth-down Seitenprofil (v1.9); NOT side_alt; rotate with shipAngle
+    val shipHull = remember { loadStargameAsset(context, "player_glocke_128.png") }
     // Separate Looki thrust loop (prefer _64); NOT baked player_glocke_thrust_on_*
     val thrustFrames = remember {
         listOf(
@@ -244,9 +244,9 @@ fun PlayScreen(onExit: () -> Unit) {
             starY2 = wrap(starY2 + 1.2f, sh)
             starY3 = wrap(starY3 + 2.0f, sh)
             if (iFrames > 0) iFrames--
-            // Endless X wrap; soft Y band so touch-fly never freezes far forward
+            // Endless X wrap; wide soft Y band for 360° strafing (edges still clamped)
             shipX = ((shipX % 1f) + 1f) % 1f
-            shipY = shipY.coerceIn(0.50f, 0.92f)
+            shipY = shipY.coerceIn(0.12f, 0.92f)
             if (muzzleFlash > 0) muzzleFlash--
 
             // Velocity → facing (keep last angle when nearly still)
@@ -573,7 +573,7 @@ fun PlayScreen(onExit: () -> Unit) {
                             var tx = pos.x / tw
                             // endless X: normalize into 0..1 (wrap), no hard wall
                             tx = ((tx % 1f) + 1f) % 1f
-                            val ty = (pos.y / th).coerceIn(0.50f, 0.92f)
+                            val ty = (pos.y / th).coerceIn(0.12f, 0.92f)
                             // short-path lerp on wrapped X
                             var dx = tx - shipX
                             if (dx > 0.5f) dx -= 1f
