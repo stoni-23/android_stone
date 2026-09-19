@@ -33,12 +33,16 @@ import androidx.compose.ui.unit.sp
 import com.stoni.androidstone.game.loadStargameAsset
 import kotlinx.coroutines.delay
 
-/** Daniel + Klugscheißer locked intro beats — exact copy. */
+/**
+ * FINAL intro captions — Daniel/Stabschef locked (sketch beats 1,3,4,5).
+ * Intro scene art: stub panels until Looki pack v4b (4 Exact beats + silent Luke-zu).
+ * Captions are Compose overlay; do not bake text into panels.
+ */
 private val introCaptions = listOf(
-    "Major: „Pimpelhuber — ab in die Glocke und holen Sie die Karte des Sieges.“",
-    "Pimpelhuber: „Aber Herr Major…“",
-    "Major: „Ab in die Glocke und holen Sie die Karte des Sieges.“",
-    "Luke/Glocke: „Luke zu.“"
+    "Major: „Pimpelhuber, ab in die Glocke!“",
+    "Pimpelhuber: „Aber Herr Major, wenn das Ding explodiert, spare ich mir vor allem die Rente.“",
+    "Major: „Rente gibt es nur für Sieger, Pimpelhuber!“",
+    "Major: „Und jetzt rein da, sonst kürze ich Ihre Restlaufzeit auf die nächsten drei Sekunden!“"
 )
 
 private const val INTRO_STEP_COUNT = 4
@@ -66,15 +70,13 @@ fun StartScreen(onStart: () -> Unit) {
             loadStargameAsset(context, "menu_logo_4.png")
         )
     }
-    // Scene art (Looki); captions are Compose bottom bars with locked copy
+    // Stub intro panels (tap-through) until pack v4b notext scenes land
     val introPanels = remember {
         listOf(
             loadStargameAsset(context, "intro_panel_1.png"),
             loadStargameAsset(context, "intro_panel_2.png"),
             loadStargameAsset(context, "intro_panel_3.png"),
-            loadStargameAsset(context, "intro_panel_4.png"),
-            loadStargameAsset(context, "intro_panel_5.png"),
-            loadStargameAsset(context, "intro_panel_6.png")
+            loadStargameAsset(context, "intro_panel_4.png")
         )
     }
 
