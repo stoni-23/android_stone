@@ -40,7 +40,13 @@ import androidx.core.content.edit
 import com.stoni.androidstone.R
 import com.stoni.androidstone.game.loadStargameAsset
 import kotlinx.coroutines.delay
+import androidx.compose.ui.graphics.drawscope.rotate
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
 import kotlin.random.Random
 
 private fun wrap(v: Float, span: Float): Float {
@@ -48,6 +54,14 @@ private fun wrap(v: Float, span: Float): Float {
     var x = v % span
     if (x < 0f) x += span
     return x
+}
+
+/** Shortest-path angle lerp in degrees (Compose rotate). */
+private fun lerpAngleDeg(from: Float, to: Float, t: Float): Float {
+    var d = (to - from) % 360f
+    if (d > 180f) d -= 360f
+    if (d < -180f) d += 360f
+    return from + d * t
 }
 
 private data class Bullet(var x: Float, var y: Float, val dy: Float, val fromPlayer: Boolean, val triple: Boolean = false, val dx: Float = 0f)
@@ -127,8 +141,10 @@ fun PlayScreen(onExit: () -> Unit) {
         onDispose { sfx.release() }
     }
 
-    val shipSingle = remember { loadStargameAsset(context, "player_glocke_single_128.png") }
-    val shipTriple = remember { loadStargameAsset(context, "player_glocke_triple_128.png") }
+    // Seitenprofil Bell — tip up / mouth down in asset; rotate with shipAngle
+    val shipHull = remember { loadStargameAsset(context, "player_glocke_side_alt_128.png") }
+    val thrust1 = remember { loadStargameAsset(context, "fx_steam_1.png") }
+    val thrust2 = remember { loadStargameAsset(context, "fx_steam_2.png") }
     val enemyImg = remember { loadStargameAsset(context, "enemy_stoerer_64.png") }
     val enemyImgB = remember { loadStargameAsset(context, "enemy_stoerer_b_64.png") }
     val enemyBig = remember { loadStargameAsset(context, "enemy_stoerer_big_128.png") }
@@ -158,6 +174,11 @@ fun PlayScreen(onExit: () -> Unit) {
     var h by remember { mutableFloatStateOf(1f) }
     var shipX by remember { mutableFloatStateOf(0.5f) }
     var shipY by remember { mutableFloatStateOf(0.82f) }
+    // Compose degrees: 0 = tip up (asset default); tip follows movement via atan2+90
+    var shipAngle by remember { mutableFloatStateOf(0f) }
+    var shipSpeed by remember { mutableFloatStateOf(0f) }
+    var prevShipPx by remember { mutableFloatStateOf(Float.NaN) }
+    var prevShipPy by remember { mutableFloatStateOf(Float.NaN) }
     var score by remember { mutableIntStateOf(0) }
     var lives by remember { mutableIntStateOf(3) }
     var paused by remember { mutableStateOf(false) }
@@ -221,27 +242,63 @@ fun PlayScreen(onExit: () -> Unit) {
             shipY = shipY.coerceIn(0.50f, 0.92f)
             if (muzzleFlash > 0) muzzleFlash--
 
-            // Auto-fire only when an enemy is in the forward sight cone
+            // Velocity → facing (keep last angle when nearly still)
+            if (!prevShipPx.isNaN()) {
+                var vx = shipPx - prevShipPx
+                val vy = shipPy - prevShipPy
+                if (vx > sw * 0.5f) vx -= sw
+                if (vx < -sw * 0.5f) vx += sw
+                val spd = hypot(vx, vy)
+                shipSpeed = spd
+                if (spd > 1.2f) {
+                    val target = Math.toDegrees(atan2(vy.toDouble(), vx.toDouble())).toFloat() + 90f
+                    shipAngle = lerpAngleDeg(shipAngle, target, 0.28f)
+                }
+            }
+            prevShipPx = shipPx
+            prevShipPy = shipPy
+
+            val angRad = shipAngle * (PI.toFloat() / 180f)
+            val fdx = sin(angRad)   // tip forward (Compose rotate: 0=up)
+            val fdy = -cos(angRad)
+
+            // Auto-fire when enemy in forward sight cone along ship facing
             fun enemyInSight(e: Enemy): Boolean {
-                val dy = shipPy - e.y
-                if (dy <= 8f || dy > sh * 0.45f) return false
-                val halfCone = dy * 0.55f + 48f
-                val dx = abs(e.x - shipPx)
-                val wrapDx = minOf(dx, sw - dx) // account for X wrap
-                return wrapDx < halfCone
+                var edx = e.x - shipPx
+                if (edx > sw * 0.5f) edx -= sw
+                if (edx < -sw * 0.5f) edx += sw
+                val edy = e.y - shipPy
+                val dist = hypot(edx, edy)
+                if (dist < 12f || dist > sh * 0.55f) return false
+                val dot = (edx * fdx + edy * fdy) / dist
+                return dot > 0.50f
             }
             val hasSight = enemies.any { enemyInSight(it) }
             if (fireCd > 0) fireCd-- else if (hasSight) {
                 fireCd = if (multishot > 0) 10 else 16
                 muzzleFlash = 4
                 sfx.shoot()
-                val speed = if (speedBoost > 0) -11f else -9f
+                val muzzle = if (speedBoost > 0) 11f else 9f
+                val mouth = shipPxSize * 0.38f
+                fun spawnShot(spreadDeg: Float) {
+                    val r = (shipAngle + spreadDeg) * (PI.toFloat() / 180f)
+                    val sx = sin(r)
+                    val sy = -cos(r)
+                    bullets += Bullet(
+                        shipPx + sx * mouth,
+                        shipPy + sy * mouth,
+                        sy * muzzle,
+                        true,
+                        multishot > 0,
+                        dx = sx * muzzle
+                    )
+                }
                 if (multishot > 0) {
-                    bullets += Bullet(shipPx, shipPy - shipPxSize * 0.35f, speed, true, true)
-                    bullets += Bullet(shipPx - 32f, shipPy - shipPxSize * 0.25f, speed, true, true)
-                    bullets += Bullet(shipPx + 32f, shipPy - shipPxSize * 0.25f, speed, true, true)
+                    spawnShot(-14f)
+                    spawnShot(0f)
+                    spawnShot(14f)
                 } else {
-                    bullets += Bullet(shipPx, shipPy - shipPxSize * 0.35f, speed, true)
+                    spawnShot(0f)
                 }
             }
             if (multishot > 0) multishot--
@@ -414,7 +471,7 @@ fun PlayScreen(onExit: () -> Unit) {
             powerups.forEach { it.y += 1.6f }
             fx.forEach { it.life-- }
             fx.removeAll { it.life <= 0 }
-            bullets.removeAll { it.y < -30 || it.y > sh + 30 }
+            bullets.removeAll { it.x < -60f || it.x > sw + 60f || it.y < -60f || it.y > sh + 60f }
             enemies.removeAll { e ->
                 when {
                     e.comet && (e.x < -80f || e.x > sw + 80f || e.y > sh + 60f) -> true
@@ -514,8 +571,17 @@ fun PlayScreen(onExit: () -> Unit) {
                             var dx = tx - shipX
                             if (dx > 0.5f) dx -= 1f
                             if (dx < -0.5f) dx += 1f
+                            val dy = ty - shipY
+                            val pxDx = dx * tw
+                            val pxDy = dy * th
+                            val move = hypot(pxDx, pxDy)
+                            if (move > 2.5f) {
+                                val target = Math.toDegrees(atan2(pxDy.toDouble(), pxDx.toDouble())).toFloat() + 90f
+                                shipAngle = lerpAngleDeg(shipAngle, target, 0.42f)
+                                shipSpeed = move
+                            }
                             shipX = ((shipX + dx * lerp) % 1f + 1f) % 1f
-                            shipY = shipY + (ty - shipY) * lerp
+                            shipY = shipY + dy * lerp
                         }
                         follow(down.position)
                         while (true) {
@@ -552,22 +618,21 @@ fun PlayScreen(onExit: () -> Unit) {
                 val ds = shipPxSize * 1.35f
                 drawImg(d, shipPx - ds / 2f, shipPy - ds / 2f, ds, ds)
             } else if (iFrames == 0 || (tick / 3) % 2 == 0) {
-                val ship = if (multishot > 0) shipTriple else shipSingle
-                drawImg(ship, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
-            }
-
-            if (muzzleFlash > 0 && !gameOver) {
-                val m = if (muzzleFlash > 2) muzzle1 else muzzle2
-                val flash = 64f
-                val mouthY = shipPy - half - flash * 0.55f
-                if (multishot > 0) {
-                    // Triple muzzle at left / center / right of ship mouth
-                    val offsets = floatArrayOf(-32f, 0f, 32f)
-                    for (ox in offsets) {
-                        drawImg(m, shipPx + ox - flash / 2f, mouthY, flash, flash)
+                rotate(degrees = shipAngle, pivot = Offset(shipPx, shipPy)) {
+                    // Thrust at mouth (bottom of tip-up sprite) while moving
+                    if (shipSpeed > 1.5f) {
+                        val flame = if ((tick / 3) % 2 == 0) thrust1 else thrust2
+                        val fw = shipPxSize * 0.55f
+                        val fh = shipPxSize * 0.75f
+                        drawImg(flame, shipPx - fw / 2f, shipPy + half * 0.25f, fw, fh)
                     }
-                } else {
-                    drawImg(m, shipPx - flash / 2f, mouthY, flash, flash)
+                    drawImg(shipHull, shipPx - half, shipPy - half, shipPxSize, shipPxSize)
+                    if (muzzleFlash > 0) {
+                        val m = if (muzzleFlash > 2) muzzle1 else muzzle2
+                        val flash = 56f
+                        // Tip / forward of side-profile (top of asset)
+                        drawImg(m, shipPx - flash / 2f, shipPy - half - flash * 0.35f, flash, flash)
+                    }
                 }
             }
             if (shield > 0) {

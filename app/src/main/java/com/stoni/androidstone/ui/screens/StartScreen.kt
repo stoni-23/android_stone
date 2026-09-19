@@ -34,34 +34,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stoni.androidstone.R
 import com.stoni.androidstone.game.loadStargameAsset
-import com.stoni.androidstone.game.loadStargameAssetOrNull
 import kotlinx.coroutines.delay
 
-/**
- * FINAL intro captions — Daniel/Stabschef locked (sketch beats 1,3,4,5).
- * Scene art: Looki intro_scene_*_notext (+ Compose overlay). v4b Luke-zu silent
- * panel later; until then 4 notext beats → start card → play.
- */
-private val introCaptions = listOf(
-    "Major: „Pimpelhuber, ab in die Glocke!“",
-    "Pimpelhuber: „Aber Herr Major, wenn das Ding explodiert, spare ich mir vor allem die Rente.“",
-    "Major: „Rente gibt es nur für Sieger, Pimpelhuber!“",
-    "Major: „Und jetzt rein da, sonst kürze ich Ihre Restlaufzeit auf die nächsten drei Sekunden!“"
-)
-
-private const val INTRO_STEP_COUNT = 4
+/** Brief start card only — intro comic panels removed (Stabschef/Daniel). */
 private const val START_CARD_TEXT = "„Start mit voller Leistung!“"
 
-// 0=MENU 1=INTRO 2=START_CARD
 private const val PHASE_MENU = 0
-private const val PHASE_INTRO = 1
-private const val PHASE_START_CARD = 2
+private const val PHASE_START_CARD = 1
 
 @Composable
 fun StartScreen(onStart: () -> Unit) {
     val context = LocalContext.current
     var phase by remember { mutableIntStateOf(PHASE_MENU) }
-    var introStep by remember { mutableIntStateOf(0) }
     var menuFrame by remember { mutableIntStateOf(0) }
 
     val menuBgs = remember {
@@ -79,24 +63,6 @@ fun StartScreen(onStart: () -> Unit) {
             loadStargameAsset(context, "menu_logo_3.png"),
             loadStargameAsset(context, "menu_logo_4.png")
         )
-    }
-    // Prefer Looki notext scenes; fall back to stub intro_panel_* if missing
-    val introPanels = remember {
-        listOf(
-            loadStargameAssetOrNull(context, "intro_scene_1_notext.png")
-                ?: loadStargameAsset(context, "intro_panel_1.png"),
-            loadStargameAssetOrNull(context, "intro_scene_2_notext.png")
-                ?: loadStargameAsset(context, "intro_panel_2.png"),
-            loadStargameAssetOrNull(context, "intro_scene_3_notext.png")
-                ?: loadStargameAsset(context, "intro_panel_3.png"),
-            loadStargameAssetOrNull(context, "intro_scene_4_notext.png")
-                ?: loadStargameAsset(context, "intro_panel_4.png")
-        )
-    }
-    // Optional silent Luke-zu (v4b); null until Looki ships it
-    val lukeZuPanel = remember {
-        loadStargameAssetOrNull(context, "intro_scene_luke_zu_notext.png")
-            ?: loadStargameAssetOrNull(context, "intro_luke_zu_notext.png")
     }
 
     val startCardPlayer = remember {
@@ -119,27 +85,15 @@ fun StartScreen(onStart: () -> Unit) {
         }
     }
 
-    // Auto-dismiss start card into play after a short beat (tap also works)
     LaunchedEffect(phase) {
         if (phase == PHASE_START_CARD) {
             runCatching {
                 startCardPlayer?.seekTo(0)
                 startCardPlayer?.start()
             }
-            delay(2200)
+            delay(1800)
             startCardPlayer?.pause()
             onStart()
-        }
-    }
-
-    val lastIntro = introStep >= INTRO_STEP_COUNT - 1
-
-    fun advanceFromIntro() {
-        if (introStep < INTRO_STEP_COUNT - 1) {
-            introStep++
-        } else {
-            // Luke-zu silent image later (v4b); for now go straight to start card
-            phase = PHASE_START_CARD
         }
     }
 
@@ -148,11 +102,7 @@ fun StartScreen(onStart: () -> Unit) {
             .fillMaxSize()
             .clickable {
                 when (phase) {
-                    PHASE_MENU -> {
-                        phase = PHASE_INTRO
-                        introStep = 0
-                    }
-                    PHASE_INTRO -> advanceFromIntro()
+                    PHASE_MENU -> phase = PHASE_START_CARD
                     PHASE_START_CARD -> {
                         startCardPlayer?.pause()
                         onStart()
@@ -175,15 +125,9 @@ fun StartScreen(onStart: () -> Unit) {
                     val ly = h * 0.12f
                     drawMenuImg(logo, lx, ly, lw, lh)
                 }
-                PHASE_INTRO -> {
-                    val panel = introPanels[introStep.coerceIn(0, introPanels.lastIndex)]
-                    drawMenuImg(panel, 0f, 0f, w, h)
-                }
                 PHASE_START_CARD -> {
-                    // Hold last intro panel under the start card if present
-                    val panel = lukeZuPanel
-                        ?: introPanels.getOrNull(introPanels.lastIndex)
-                    if (panel != null) drawMenuImg(panel, 0f, 0f, w, h)
+                    val bg = menuBgs[menuFrame % menuBgs.size]
+                    drawMenuImg(bg, 0f, 0f, w, h)
                 }
             }
         }
@@ -221,35 +165,6 @@ fun StartScreen(onStart: () -> Unit) {
                         .align(Alignment.BottomCenter)
                         .padding(bottom = 28.dp)
                 )
-            }
-            PHASE_INTRO -> {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .background(Color(0xCC050510))
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
-                ) {
-                    Text(
-                        introCaptions[introStep.coerceIn(0, introCaptions.lastIndex)],
-                        color = Color(0xFFF2E6D0),
-                        fontSize = 13.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Text(
-                        if (lastIntro) "► Tippen …" else "Tippen …",
-                        color = Color(0xFF8A8680),
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                    )
-                }
             }
             PHASE_START_CARD -> {
                 Box(
