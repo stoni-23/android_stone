@@ -1126,12 +1126,13 @@ fun PlayScreen(onExit: () -> Unit) {
                     val thrusting = isTouching || hypot(shipVx, shipVy) > 1.2f
                     if (thrusting) {
                         val tf = thrustFrames[((tick / 5) % thrustFrames.size).coerceAtLeast(0)]
-                        // Flame-only assets (transparent top, no cyan nozzle) — draw full frame
+                        // Artiflux flame-only v2: flush top, 0 cyan — attach Top-Center at bell mouth
                         val tw = shipPxSize * 0.78f
                         val th = shipPxSize * 0.55f
-                        // Tip-up hull: mouth at bottom; flame at mouth, slight overlap under hull
-                        val mouthY = shipSy + half
-                        val ty = mouthY - th * 0.10f
+                        // Tip-up hull: mouth ~0.44 below center (cyan mode-icon stripped from asset)
+                        val mouthY = shipSy + half * 0.44f
+                        // Slight overlap so plume roots under rim with ZERO gap
+                        val ty = mouthY - th * 0.06f
                         drawImg(tf, shipSx - tw / 2f, ty, tw, th)
                     }
                     // Always draw hull AFTER thrust so flame sits under mouth
@@ -1486,7 +1487,8 @@ private fun DrawScope.drawSpriteOrOval(img: ImageBitmap?, cx: Float, cy: Float, 
 
 /**
  * Endless same-orientation tiling (NO flipX/flipY mirrors / kaleidoscope).
- * tileScale > 1 draws larger tiles (soft nebula) while keeping one continuous look.
+ * Tiles at **native bitmap size** (× tileScale) — never stretch one tile to the full
+ * screen, which caused visible wrap jumps ("map wiederholt sich mit Sprung").
  */
 private fun DrawScope.drawSeamlessTiled(
     img: ImageBitmap,
@@ -1497,17 +1499,18 @@ private fun DrawScope.drawSeamlessTiled(
     alpha: Float = 1f,
     tileScale: Float = 1f
 ) {
-    val overlap = 2f
-    val tw = sw * tileScale
-    val th = sh * tileScale
+    val tw = img.width.toFloat() * tileScale
+    val th = img.height.toFloat() * tileScale
+    if (tw < 1f || th < 1f) return
     val ox = ((offX % tw) + tw) % tw
     val oy = ((offY % th) + th) % th
-    var y = oy - th
-    while (y < sh + overlap) {
-        var x = ox - tw
-        while (x < sw + overlap) {
-            // Always same orientation — never scale(-1f) mirror seams
-            drawImg(img, x - overlap * 0.5f, y - overlap * 0.5f, tw + overlap, th + overlap, alpha)
+    // 1px overlap hides IntOffset truncation hairlines between native tiles
+    val pad = 1f
+    var y = -oy
+    while (y < sh) {
+        var x = -ox
+        while (x < sw) {
+            drawImg(img, x - pad, y - pad, tw + pad * 2f, th + pad * 2f, alpha)
             x += tw
         }
         y += th
