@@ -11,10 +11,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
@@ -71,19 +70,14 @@ class ShooterEngine {
 
     var playerX by mutableFloatStateOf(540f)
     var playerY by mutableFloatStateOf(960f)
-    var playerAngle by mutableFloatStateOf(-90f)
+    var playerAngle by mutableFloatStateOf(0f)
     var playerHp by mutableFloatStateOf(100f)
     val playerMaxHp = 100f
 
-    /** Finger position in screen space (updated by input). */
-    var touchScreenX by mutableFloatStateOf(540f)
-    var touchScreenY by mutableFloatStateOf(500f)
+    var targetTouchX by mutableFloatStateOf(540f)
+    var targetTouchY by mutableFloatStateOf(500f)
     var isTouching by mutableStateOf(false)
     var shootCooldown = 0
-
-    /** Camera top-left in world space; player stays screen-centered. */
-    val camX: Float get() = playerX - screenWidth / 2f
-    val camY: Float get() = playerY - screenHeight / 2f
 
     val bullets = mutableStateListOf<Bullet>()
     val enemies = mutableStateListOf<Enemy>()
@@ -100,17 +94,13 @@ class ShooterEngine {
     private var enemiesSpawnedInWave = 0
     private val enemiesPerWave get() = 10 + (wave * 5)
 
-    /** Off-camera despawn radius (world units from player). */
-    private val despawnDist: Float
-        get() = max(screenWidth, screenHeight) * 0.85f + 280f
-
     fun reset() {
         playerX = screenWidth / 2f
         playerY = screenHeight / 2f
         playerHp = playerMaxHp
         playerAngle = -90f
-        touchScreenX = screenWidth / 2f
-        touchScreenY = screenHeight / 2f - 200f
+        targetTouchX = playerX
+        targetTouchY = playerY - 200f
         bullets.clear()
         enemies.clear()
         particles.clear()
@@ -120,29 +110,14 @@ class ShooterEngine {
         isBossActive = false
         spawnTimer = 0
         enemiesSpawnedInWave = 0
-        shootCooldown = 0
     }
 
     fun update() {
         if (isGameOver) return
 
-        // World-space aim/fly target from screen touch + current camera
-        val targetWorldX = touchScreenX + camX
-        val targetWorldY = touchScreenY + camY
-        val dx = targetWorldX - playerX
-        val dy = targetWorldY - playerY
-        val aimDist = hypot(dx, dy)
-
-        if (aimDist > 1f) {
-            playerAngle = (atan2(dy, dx) * 180f / PI).toFloat()
-        }
-
-        // Touch-fly: lerp player toward finger (world)
-        if (isTouching && aimDist > 2f) {
-            val lerp = 0.16f
-            playerX += dx * lerp
-            playerY += dy * lerp
-        }
+        val dx = targetTouchX - playerX
+        val dy = targetTouchY - playerY
+        playerAngle = (atan2(dy, dx) * 180f / PI).toFloat()
 
         if (isTouching) {
             shootCooldown--
@@ -174,8 +149,7 @@ class ShooterEngine {
             b.y += b.vy
             b.lifeTime--
 
-            val far = hypot(b.x - playerX, b.y - playerY) > despawnDist
-            if (b.lifeTime <= 0 || far) {
+            if (b.lifeTime <= 0 || b.x < -50 || b.x > screenWidth + 50 || b.y < -50 || b.y > screenHeight + 50) {
                 bulletIterator.remove()
             }
         }
@@ -274,10 +248,16 @@ class ShooterEngine {
     }
 
     private fun spawnRandomEnemy() {
-        val spawnAngle = Random.nextFloat() * 2f * PI.toFloat()
-        val spawnDist = max(screenWidth, screenHeight) * 0.72f + 100f
-        val spawnX = playerX + cos(spawnAngle) * spawnDist
-        val spawnY = playerY + sin(spawnAngle) * spawnDist
+        val edge = Random.nextInt(4)
+        var spawnX = 0f
+        var spawnY = 0f
+
+        when (edge) {
+            0 -> { spawnX = Random.nextFloat() * screenWidth; spawnY = -40f }
+            1 -> { spawnX = screenWidth + 40f; spawnY = Random.nextFloat() * screenHeight }
+            2 -> { spawnX = Random.nextFloat() * screenWidth; spawnY = screenHeight + 40f }
+            3 -> { spawnX = -40f; spawnY = Random.nextFloat() * screenHeight }
+        }
 
         val type = when {
             wave >= 2 && Random.nextFloat() < 0.20f -> EnemyType.TANK
@@ -294,15 +274,7 @@ class ShooterEngine {
         bossHpMax = bossHp
         bossHpCurrent = bossHp
 
-        enemies.add(
-            Enemy(
-                x = playerX,
-                y = playerY - screenHeight * 0.42f - 80f,
-                hp = bossHp,
-                maxHp = bossHp,
-                type = EnemyType.BOSS
-            )
-        )
+        enemies.add(Enemy(x = screenWidth / 2f, y = -80f, hp = bossHp, maxHp = bossHp, type = EnemyType.BOSS))
     }
 
     private fun createExplosion(x: Float, y: Float, color: Color, count: Int) {
@@ -342,12 +314,12 @@ fun PlayScreen(onBackToMenu: () -> Unit = {}) {
                 detectDragGestures(
                     onDragStart = { offset ->
                         engine.isTouching = true
-                        engine.touchScreenX = offset.x
-                        engine.touchScreenY = offset.y
+                        engine.targetTouchX = offset.x
+                        engine.targetTouchY = offset.y
                     },
                     onDrag = { change, _ ->
-                        engine.touchScreenX = change.position.x
-                        engine.touchScreenY = change.position.y
+                        engine.targetTouchX = change.position.x
+                        engine.targetTouchY = change.position.y
                     },
                     onDragEnd = { engine.isTouching = false },
                     onDragCancel = { engine.isTouching = false }
@@ -357,8 +329,8 @@ fun PlayScreen(onBackToMenu: () -> Unit = {}) {
                 detectTapGestures(
                     onPress = { offset ->
                         engine.isTouching = true
-                        engine.touchScreenX = offset.x
-                        engine.touchScreenY = offset.y
+                        engine.targetTouchX = offset.x
+                        engine.targetTouchY = offset.y
                         tryAwaitRelease()
                         engine.isTouching = false
                     }
@@ -366,70 +338,37 @@ fun PlayScreen(onBackToMenu: () -> Unit = {}) {
             }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            if (engine.screenWidth != size.width || engine.screenHeight != size.height) {
-                val first = engine.screenWidth == 1080f && engine.playerX == 540f
-                engine.screenWidth = size.width
-                engine.screenHeight = size.height
-                if (first) {
-                    engine.playerX = size.width / 2f
-                    engine.playerY = size.height / 2f
-                    engine.touchScreenX = size.width / 2f
-                    engine.touchScreenY = size.height / 2f - 200f
-                }
-            }
+            engine.screenWidth = size.width
+            engine.screenHeight = size.height
 
-            val camX = engine.camX
-            val camY = engine.camY
-
-            // World grid (camera-relative)
+            // Hintergrundraster
             val spacing = 80f
-            var curX = -((camX % spacing) + spacing) % spacing
+            var curX = 0f
             while (curX < size.width) {
-                drawLine(
-                    Color(0xFF151824),
-                    start = Offset(curX, 0f),
-                    end = Offset(curX, size.height),
-                    strokeWidth = 1.5f
-                )
+                drawLine(Color(0xFF151824), start = Offset(curX, 0f), end = Offset(curX, size.height), strokeWidth = 1.5f)
                 curX += spacing
             }
-            var curY = -((camY % spacing) + spacing) % spacing
+            var curY = 0f
             while (curY < size.height) {
-                drawLine(
-                    Color(0xFF151824),
-                    start = Offset(0f, curY),
-                    end = Offset(size.width, curY),
-                    strokeWidth = 1.5f
-                )
+                drawLine(Color(0xFF151824), start = Offset(0f, curY), end = Offset(size.width, curY), strokeWidth = 1.5f)
                 curY += spacing
             }
 
-            // Particles (world → screen)
+            // Partikel
             for (p in engine.particles) {
-                drawCircle(
-                    color = p.color.copy(alpha = max(0f, p.alpha)),
-                    radius = p.size,
-                    center = Offset(p.x - camX, p.y - camY)
-                )
+                drawCircle(color = p.color.copy(alpha = max(0f, p.alpha)), radius = p.size, center = Offset(p.x, p.y))
             }
 
-            // Lasers
+            // Laser
             for (b in engine.bullets) {
-                val sx = b.x - camX
-                val sy = b.y - camY
-                drawCircle(color = Color(0xFF00E5FF), radius = 5f, center = Offset(sx, sy))
-                drawLine(
-                    color = Color.White,
-                    start = Offset(sx, sy),
-                    end = Offset(sx - b.vx * 1.5f, sy - b.vy * 1.5f),
-                    strokeWidth = 3f
-                )
+                drawCircle(color = Color(0xFF00E5FF), radius = 5f, center = Offset(b.x, b.y))
+                drawLine(color = Color.White, start = Offset(b.x, b.y), end = Offset(b.x - b.vx * 1.5f, b.y - b.vy * 1.5f), strokeWidth = 3f)
             }
 
-            // Enemies
+            // Gegner
             for (enemy in engine.enemies) {
                 val r = enemy.type.baseRadius
-                val center = Offset(enemy.x - camX, enemy.y - camY)
+                val center = Offset(enemy.x, enemy.y)
                 when (enemy.type) {
                     EnemyType.SWARMER -> {
                         val path = Path().apply {
@@ -457,45 +396,37 @@ fun PlayScreen(onBackToMenu: () -> Unit = {}) {
 
                 if (enemy.type != EnemyType.SWARMER && enemy.hp < enemy.maxHp) {
                     val barWidth = r * 2f
-                    val barX = center.x - r
-                    val barY = center.y - r - 8f
-                    drawRect(Color(0xFF333333), topLeft = Offset(barX, barY), size = Size(barWidth, 4f))
-                    drawRect(
-                        Color(0xFF00FF9D),
-                        topLeft = Offset(barX, barY),
-                        size = Size(barWidth * (enemy.hp / enemy.maxHp), 4f)
-                    )
+                    drawRect(Color(0xFF333333), topLeft = Offset(enemy.x - r, enemy.y - r - 8f), size = androidx.compose.ui.geometry.Size(barWidth, 4f))
+                    drawRect(Color(0xFF00FF9D), topLeft = Offset(enemy.x - r, enemy.y - r - 8f), size = androidx.compose.ui.geometry.Size(barWidth * (enemy.hp / enemy.maxHp), 4f))
                 }
             }
 
-            // Player (screen-centered via camera)
+            // Spieler
             if (!engine.isGameOver) {
-                val px = engine.playerX - camX
-                val py = engine.playerY - camY
-                rotate(degrees = engine.playerAngle + 90f, pivot = Offset(px, py)) {
+                rotate(degrees = engine.playerAngle + 90f, pivot = Offset(engine.playerX, engine.playerY)) {
                     val shipPath = Path().apply {
-                        moveTo(px, py - 28f)
-                        lineTo(px + 18f, py + 20f)
-                        lineTo(px, py + 12f)
-                        lineTo(px - 18f, py + 20f)
+                        moveTo(engine.playerX, engine.playerY - 28f)
+                        lineTo(engine.playerX + 18f, engine.playerY + 20f)
+                        lineTo(engine.playerX, engine.playerY + 12f)
+                        lineTo(engine.playerX - 18f, engine.playerY + 20f)
                         close()
                     }
                     drawPath(path = shipPath, color = Color(0xFF00E5FF))
-                    drawCircle(color = Color.White, radius = 5f, center = Offset(px, py - 4f))
+                    drawCircle(color = Color.White, radius = 5f, center = Offset(engine.playerX, engine.playerY - 4f))
                 }
 
                 if (engine.isTouching) {
                     drawCircle(
                         color = Color(0x6600E5FF),
                         radius = 20f,
-                        center = Offset(engine.touchScreenX, engine.touchScreenY),
-                        style = Stroke(width = 2f)
+                        center = Offset(engine.targetTouchX, engine.targetTouchY),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2f)
                     )
                 }
             }
         }
 
-        // HUD (screen-fixed)
+        // HUD
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -507,28 +438,11 @@ fun PlayScreen(onBackToMenu: () -> Unit = {}) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(
-                        "SCORE: ${engine.score}",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Black,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        "WAVE ${engine.wave}",
-                        color = Color(0xFF00E5FF),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Text("SCORE: ${engine.score}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                    Text("WAVE ${engine.wave}", color = Color(0xFF00E5FF), fontSize = 15.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        "HP: ${engine.playerHp.toInt()}%",
-                        color = if (engine.playerHp > 30f) Color(0xFF00FF9D) else Color(0xFFFF5252),
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Text("HP: ${engine.playerHp.toInt()}%", color = if (engine.playerHp > 30f) Color(0xFF00FF9D) else Color(0xFFFF5252), fontSize = 13.sp, fontWeight = FontWeight.Bold)
                     LinearProgressIndicator(
                         progress = { engine.playerHp / engine.playerMaxHp },
                         modifier = Modifier.width(130.dp).height(10.dp),
@@ -541,13 +455,7 @@ fun PlayScreen(onBackToMenu: () -> Unit = {}) {
             if (engine.isBossActive) {
                 Spacer(modifier = Modifier.height(14.dp))
                 Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        "⚠ SECTOR BOSS ⚠",
-                        color = Color(0xFFE040FB),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Text("⚠ SECTOR BOSS ⚠", color = Color(0xFFE040FB), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, fontFamily = FontFamily.Monospace)
                     Spacer(modifier = Modifier.height(4.dp))
                     LinearProgressIndicator(
                         progress = { engine.bossHpCurrent / engine.bossHpMax },
@@ -559,6 +467,7 @@ fun PlayScreen(onBackToMenu: () -> Unit = {}) {
             }
         }
 
+        // Game Over
         if (engine.isGameOver) {
             Box(
                 modifier = Modifier.fillMaxSize().background(Color(0xCC000000)),
@@ -569,25 +478,11 @@ fun PlayScreen(onBackToMenu: () -> Unit = {}) {
                     shape = RoundedCornerShape(16.dp),
                     modifier = Modifier.padding(24.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(28.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            "SYSTEM DESTROYED",
-                            color = Color(0xFFFF5252),
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Black,
-                            fontFamily = FontFamily.Monospace
-                        )
+                    Column(modifier = Modifier.padding(28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("SYSTEM DESTROYED", color = Color(0xFFFF5252), fontSize = 24.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("Erreichte Welle: ${engine.wave}", color = Color.LightGray, fontSize = 16.sp)
-                        Text(
-                            "Punkte: ${engine.score}",
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text("Punkte: ${engine.score}", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(24.dp))
                         Button(
                             onClick = { engine.reset() },
