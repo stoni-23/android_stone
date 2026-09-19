@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -32,10 +33,13 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Shadow
@@ -273,8 +277,8 @@ fun PlayScreen(onExit: () -> Unit) {
     var camY by remember { mutableFloatStateOf(WORLD_H * 0.5f) }
 
     var score by remember { mutableIntStateOf(0) }
-    var lives by remember { mutableIntStateOf(4) }
-    val maxLives = 4
+    var lives by remember { mutableIntStateOf(5) }
+    val maxLives = 6
     var energy by remember { mutableFloatStateOf(100f) }
     var paused by remember { mutableStateOf(false) }
     var gameOver by remember { mutableStateOf(false) }
@@ -313,13 +317,13 @@ fun PlayScreen(onExit: () -> Unit) {
         if (iFrames > 0) return
         if (shield > 0) {
             shield = 0
-            energy = (energy - 10f).coerceAtLeast(15f)
-            iFrames = 50
+            energy = (energy - 6f).coerceAtLeast(20f)
+            iFrames = 55
             return
         }
         lives--
-        energy = (energy - 18f).coerceAtLeast(0f)
-        iFrames = 75
+        energy = (energy - 12f).coerceAtLeast(0f)
+        iFrames = 90
         if (lives <= 0) {
             gameOver = true
             banner = "Glocke zerstört. Nochmal?"
@@ -399,35 +403,27 @@ fun PlayScreen(onExit: () -> Unit) {
             shipPx += shipVx
             shipPy += shipVy
 
-            // Toroidal wrap — leave left, appear right (no walls / bounce)
-            val prevShipX = shipPx
-            val prevShipY = shipPy
+            // Toroidal wrap — leave edge → appear opposite edge. Never reset to world center.
             shipPx = wrapCoord(shipPx, WORLD_W)
             shipPy = wrapCoord(shipPy, WORLD_H)
-            val shipWrapped = shipPx != prevShipX || shipPy != prevShipY
 
-            // Soft camera margins; on wrap snap cam to ship to avoid jump artifact
-            if (shipWrapped) {
-                camX = shipPx
-                camY = shipPy
-            } else {
-                val marginX = sw * 0.22f
-                val marginY = sh * 0.22f
-                val targetCamX = when {
-                    shipPx < camX - marginX -> shipPx + marginX
-                    shipPx > camX + marginX -> shipPx - marginX
-                    else -> camX
-                }
-                val targetCamY = when {
-                    shipPy < camY - marginY -> shipPy + marginY
-                    shipPy > camY + marginY -> shipPy - marginY
-                    else -> camY
-                }
-                camX += (targetCamX - camX) * 0.12f
-                camY += (targetCamY - camY) * 0.12f
-                camX = wrapCoord(camX, WORLD_W)
-                camY = wrapCoord(camY, WORLD_H)
+            // Soft camera margins in wrapped space so follow never lerps through mid-map.
+            val marginX = sw * 0.22f
+            val marginY = sh * 0.22f
+            val dx = wrapDelta(shipPx - camX, WORLD_W)
+            val dy = wrapDelta(shipPy - camY, WORLD_H)
+            val adjDx = when {
+                dx < -marginX -> dx + marginX
+                dx > marginX -> dx - marginX
+                else -> 0f
             }
+            val adjDy = when {
+                dy < -marginY -> dy + marginY
+                dy > marginY -> dy - marginY
+                else -> 0f
+            }
+            camX = wrapCoord(camX + adjDx * 0.18f, WORLD_W)
+            camY = wrapCoord(camY + adjDy * 0.18f, WORLD_H)
 
             bgOffsetX = -camX
             bgOffsetY = -camY
@@ -662,12 +658,10 @@ fun PlayScreen(onExit: () -> Unit) {
             }
             fx.removeAll { it.life <= 0 }
 
-            // Bullets: despawn far away (no wrap — avoids rear hits across seam)
+            // Bullets: despawn when far from ship (wrapped dist). No bullet wrap (no rear hits).
             val bulletMaxDist = max(sw, sh) * 1.6f + 200f
             bullets.removeAll {
-                hypot(it.x - shipPx, it.y - shipPy) > bulletMaxDist ||
-                    it.x < -200f || it.x > WORLD_W + 200f ||
-                    it.y < -200f || it.y > WORLD_H + 200f
+                wrapDist(it.x, it.y, shipPx, shipPy) > bulletMaxDist
             }
             powerups.removeAll { wrapDist(it.x, it.y, shipPx, shipPy) > bulletMaxDist * 1.2f }
 
@@ -753,9 +747,19 @@ fun PlayScreen(onExit: () -> Unit) {
                     sfx.pickup()
                     when (p.type) {
                         PowerUpKind.ENERGY -> {
-                            energy = (energy + 42f).coerceAtMost(100f)
+                            energy = (energy + 48f).coerceAtMost(100f)
                             energyFlash = 90
                             banner = "Energie +!"
+                        }
+                        PowerUpKind.LIFE -> {
+                            if (lives < maxLives) {
+                                lives++
+                                banner = "Extra-Leben!"
+                            } else {
+                                energy = (energy + 55f).coerceAtMost(100f)
+                                energyFlash = 90
+                                banner = "Leben voll — Energie!"
+                            }
                         }
                         PowerUpKind.RAPID_FIRE -> {
                             rapidFire = 480
@@ -1076,6 +1080,7 @@ fun PlayScreen(onExit: () -> Unit) {
                 // Artiflux Items v1 remap (P1 energy/spread + optional rapid/magnet; shield/speed kept)
                 val ring = when (p.type) {
                     PowerUpKind.ENERGY -> Color(0xFFB2EBF2)
+                    PowerUpKind.LIFE -> Color(0xFFFF5252)
                     PowerUpKind.RAPID_FIRE -> Color(0xFFFF9100)
                     PowerUpKind.SPREAD -> Color(0xFFFF5252)
                     PowerUpKind.SHIELD -> Color(0xFF69F0AE)
@@ -1090,6 +1095,7 @@ fun PlayScreen(onExit: () -> Unit) {
                 drawCircle(color = ring.copy(alpha = 0.85f), radius = 32f, center = Offset(px, py), style = Stroke(width = 4f))
                 val img = when (p.type) {
                     PowerUpKind.ENERGY -> puEnergy
+                    PowerUpKind.LIFE -> heartImg
                     PowerUpKind.RAPID_FIRE -> puRapid
                     PowerUpKind.SPREAD -> puSpread
                     PowerUpKind.SHIELD -> puShield
@@ -1204,10 +1210,13 @@ fun PlayScreen(onExit: () -> Unit) {
                 .windowInsetsPadding(hudInsets)
                 .padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
-            // Top-left: hearts + thick HP / energy / shield bars + pause
+            // Top-left: polished panel — hearts + bars + pause
             Column(
-                modifier = Modifier.align(Alignment.TopStart),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .background(Color(0xCC070712), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     repeat(lives.coerceAtLeast(0)) {
@@ -1248,11 +1257,11 @@ fun PlayScreen(onExit: () -> Unit) {
                 ) {
                     Text(
                         if (paused) "Weiter" else "Pause",
-                        color = Color.White,
+                        color = Color(0xFFF2E6D0),
                         style = MaterialTheme.typography.labelLarge.copy(
                             fontFamily = FontFamily.SansSerif,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             shadow = Shadow(Color.Black, Offset(1.5f, 1.5f), 6f)
                         )
                     )
@@ -1281,7 +1290,7 @@ fun PlayScreen(onExit: () -> Unit) {
             ) {
                 Box(
                     modifier = Modifier
-                        .background(Color(0xCC0A0A18), RoundedCornerShape(10.dp))
+                        .background(Color(0xDD070712), RoundedCornerShape(14.dp))
                         .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     Text(
@@ -1388,6 +1397,7 @@ fun PlayScreen(onExit: () -> Unit) {
                         .padding(end = 4.dp, bottom = 8.dp),
                     shipX = shipPx,
                     shipY = shipPy,
+                    shipAngle = shipAngle,
                     enemies = enemies,
                     worldW = WORLD_W,
                     worldH = WORLD_H
@@ -1422,83 +1432,91 @@ private fun ArenaMinimap(
     modifier: Modifier = Modifier,
     shipX: Float,
     shipY: Float,
+    shipAngle: Float,
     enemies: List<Enemy>,
     worldW: Float,
     worldH: Float
 ) {
-    val mapDp = 112.dp
+    val mapDp = 118.dp
     Column(modifier = modifier, horizontalAlignment = Alignment.End) {
         Text(
             "Arena",
-            color = Color.White.copy(alpha = 0.45f),
+            color = Color.White.copy(alpha = 0.50f),
             style = MaterialTheme.typography.labelSmall.copy(
                 fontFamily = FontFamily.SansSerif,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Medium
             ),
-            modifier = Modifier.padding(end = 6.dp, bottom = 2.dp)
+            modifier = Modifier.padding(end = 8.dp, bottom = 3.dp)
         )
         Box(
             modifier = Modifier
                 .size(mapDp)
-                .background(Color(0xCC050510), RoundedCornerShape(12.dp))
-                .padding(6.dp)
+                .shadow(6.dp, CircleShape)
+                .clip(CircleShape)
+                .background(Color(0xE0050514))
         ) {
             Canvas(Modifier.fillMaxSize()) {
-                val pad = 3f
-                val aw = size.width - pad * 2f
-                val ah = size.height - pad * 2f
-                // Dim arena rect (portrait aspect)
-                val aspect = worldW / worldH
-                val rw: Float
-                val rh: Float
-                if (aw / ah > aspect) {
-                    rh = ah
-                    rw = ah * aspect
-                } else {
-                    rw = aw
-                    rh = aw / aspect
-                }
-                val left = (size.width - rw) / 2f
-                val top = (size.height - rh) / 2f
-                drawRoundRect(
-                    color = Color(0xFF12122A),
-                    topLeft = Offset(left, top),
-                    size = Size(rw, rh),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f)
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val r = min(size.width, size.height) / 2f - 2f
+                drawCircle(Color(0xFF0A1020), radius = r, center = Offset(cx, cy))
+                drawCircle(
+                    color = Color(0x554FC3F7),
+                    radius = r,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 2.4f)
                 )
-                drawRoundRect(
-                    color = Color(0x334FC3F7),
-                    topLeft = Offset(left, top),
-                    size = Size(rw, rh),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f),
+                drawCircle(
+                    color = Color(0x22FFFFFF),
+                    radius = r - 4f,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 1.2f)
+                )
+                val mapR = r - 8f
+                fun toMx(wx: Float) = cx + ((wx / worldW) - 0.5f) * 2f * mapR * (worldW / max(worldW, worldH))
+                fun toMy(wy: Float) = cy + ((wy / worldH) - 0.5f) * 2f * mapR * (worldH / max(worldW, worldH))
+                drawCircle(
+                    color = Color(0x184FC3F7),
+                    radius = mapR,
+                    center = Offset(cx, cy),
                     style = Stroke(width = 1.5f)
                 )
-                // Wrap-edge hint (soft border dashes feel)
-                drawRect(
-                    color = Color(0x22FFFFFF),
-                    topLeft = Offset(left + 1f, top + 1f),
-                    size = Size(rw - 2f, rh - 2f),
-                    style = Stroke(width = 1f)
-                )
-                fun toMx(wx: Float) = left + (wx / worldW) * rw
-                fun toMy(wy: Float) = top + (wy / worldH) * rh
-                // Nearby enemies as dots (all alive — arena overview)
                 enemies.forEach { e ->
                     val ex = toMx(e.x)
                     val ey = toMy(e.y)
+                    val ddx = ex - cx
+                    val ddy = ey - cy
+                    if (ddx * ddx + ddy * ddy > mapR * mapR) return@forEach
                     val col = when {
                         e.type.isBossLike() -> Color(0xFFE040FB)
                         else -> Color(0xFFFF8A65)
                     }
-                    drawCircle(col.copy(alpha = 0.85f), radius = if (e.type.isBossLike()) 3.2f else 2.0f, center = Offset(ex, ey))
+                    drawCircle(
+                        col.copy(alpha = 0.9f),
+                        radius = if (e.type.isBossLike()) 3.4f else 2.1f,
+                        center = Offset(ex, ey)
+                    )
                 }
-                // Player blip
                 val px = toMx(shipX)
                 val py = toMy(shipY)
-                drawCircle(Color(0xFF00E5FF).copy(alpha = 0.35f), radius = 6f, center = Offset(px, py))
-                drawCircle(Color(0xFF00E5FF), radius = 3.2f, center = Offset(px, py))
-                drawCircle(Color.White, radius = 1.4f, center = Offset(px, py))
+                val tip = 7.5f
+                val base = 5.2f
+                val rad = (shipAngle - 90f) * (PI / 180.0)
+                val fx = cos(rad).toFloat()
+                val fy = sin(rad).toFloat()
+                val lx = -fy
+                val ly = fx
+                val path = Path().apply {
+                    fillType = PathFillType.EvenOdd
+                    moveTo(px + fx * tip, py + fy * tip)
+                    lineTo(px - fx * tip * 0.55f + lx * base, py - fy * tip * 0.55f + ly * base)
+                    lineTo(px - fx * tip * 0.55f - lx * base, py - fy * tip * 0.55f - ly * base)
+                    close()
+                }
+                drawPath(path, Color(0xFF00E5FF).copy(alpha = 0.35f))
+                drawPath(path, Color(0xFF00E5FF))
+                drawPath(path, Color.White.copy(alpha = 0.85f), style = Stroke(width = 1.1f))
             }
         }
     }

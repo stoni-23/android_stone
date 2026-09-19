@@ -10,12 +10,13 @@ data class SpawnPick(
 
 /**
  * Power-up kinds for drop rolls (Artiflux Items v1).
- * P1: ENERGY (heal) highest; SPREAD highest among weapons.
+ * P1: ENERGY (heal) + LIFE (extra life); SPREAD highest among weapons.
  * P2 rarer: WEAPON_LASER, WEAPON_MISSILE, BOMB, OVERDRIVE.
  * Optional low: RAPID_FIRE, SCORE_MAGNET. SHIELD/SPEED_BOOST moderate.
  */
 enum class PowerUpKind {
     ENERGY,
+    LIFE,
     RAPID_FIRE,
     SPREAD,
     SHIELD,
@@ -110,23 +111,28 @@ fun pickEnemySpawn(wave: Int, rng: Random = Random): SpawnPick {
  * @return null if nothing drops; otherwise a [PowerUpKind].
  */
 fun rollPowerUpDrop(wave: Int, rng: Random = Random): PowerUpKind? {
-    val chance = (0.28f + wave * 0.012f).coerceAtMost(0.38f)
+    // Early waves: higher drop chance + more ENERGY/LIFE so the game is less brutal.
+    val early = wave <= 3
+    val chance = if (early) {
+        (0.40f + wave * 0.02f).coerceAtMost(0.50f)
+    } else {
+        (0.30f + wave * 0.012f).coerceAtMost(0.40f)
+    }
     if (rng.nextFloat() >= chance) return null
+    val energyW = if (early) 38 else 30
+    val lifeW = if (early) 22 else 14
     val weights = listOf(
-        // P1
-        PowerUpKind.ENERGY to 34,
-        PowerUpKind.SPREAD to 16,
-        // moderate
-        PowerUpKind.SHIELD to 12,
-        PowerUpKind.SPEED_BOOST to 11,
-        // optional niedrig
-        PowerUpKind.RAPID_FIRE to 8,
-        PowerUpKind.SCORE_MAGNET to 6,
-        // P2 seltener
-        PowerUpKind.WEAPON_LASER to 5,
-        PowerUpKind.WEAPON_MISSILE to 5,
-        PowerUpKind.OVERDRIVE to 5,
-        PowerUpKind.BOMB to 4,
+        PowerUpKind.ENERGY to energyW,
+        PowerUpKind.LIFE to lifeW,
+        PowerUpKind.SPREAD to 14,
+        PowerUpKind.SHIELD to 11,
+        PowerUpKind.SPEED_BOOST to 10,
+        PowerUpKind.RAPID_FIRE to 7,
+        PowerUpKind.SCORE_MAGNET to 5,
+        PowerUpKind.WEAPON_LASER to 4,
+        PowerUpKind.WEAPON_MISSILE to 4,
+        PowerUpKind.OVERDRIVE to 4,
+        PowerUpKind.BOMB to 3,
     )
     return weightedPick(weights, rng)
 }
